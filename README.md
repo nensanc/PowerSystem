@@ -1,0 +1,1 @@
+Repositorio destinado a realiar los códigos del despacoh óptimo multi-área y mulyi-periodo
