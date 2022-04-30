@@ -1,1 +1,1 @@
-Repositorio destinado a realiar los códigos del despacoh óptimo multi-área y mulyi-periodo
+Repositorio destinado a realizar los códigos del despacho óptimo multi-área y multi-periodo
