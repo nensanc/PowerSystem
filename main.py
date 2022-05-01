@@ -15,9 +15,11 @@ def save_csv(matrix, name):
     df.to_csv(path+'\\'+name+'.csv')
 
 net = pn.case39()
-# net.gen.iloc[:,4] = df_gen['P_2']
-# net.load.iloc[:,6] = df_load['P_2']
-# net.load.iloc[:,7] = df_load['Q_2']
+
+
+# net.gen.iloc[:,4] = df_gen['P_6']
+# net.load.iloc[:,6] = df_load['P_6']
+# net.load.iloc[:,7] = df_load['Q_6']
 
 
 pp.runpp(net)
@@ -70,7 +72,7 @@ for i in range(m_d.shape[0]):
                 m_d_n[i,j] = m_d[i,j]/np.amax(m_d[i,:])
 save_csv(m_d_n, 'm_d_n')
 
-# Componentes principales
-pca = PCA(n_components=10)
-cp = pca.fit(np.asarray(m_d_n))
-print(cp.singular_values_)
+# # Componentes principales
+# pca = PCA(n_components=10)
+# cp = pca.fit(np.asarray(m_d_n))
+# print(cp.singular_values_)
