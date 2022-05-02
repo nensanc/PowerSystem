@@ -8,6 +8,7 @@ df_data = read_csv(path+'\\'+name+'.csv', sep=',')
 
 
 net = pn.case39()
+
 for p in range(1, 25):
     # p = 2 # periodo a evalaur
     print('Periodo: %s'%p)

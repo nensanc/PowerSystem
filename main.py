@@ -16,18 +16,12 @@ def save_csv(matrix, name):
 
 net = pn.case39()
 
-
-# net.gen.iloc[:,4] = df_gen['P_6']
-# net.load.iloc[:,6] = df_load['P_6']
-# net.load.iloc[:,7] = df_load['Q_6']
-
-
 pp.runpp(net)
 
 J = net._ppc["internal"]["J"].todense()
 save_csv(J, 'J')
 invJ = np.linalg.inv(J)
-save_csv(invJ, 'invJ')
+save_csv(invJ, 'invJ') 
 # get pv and pq values from newtonpf()
 pv = net._ppc["internal"]["pv"]
 pq = net._ppc["internal"]["pq"]
