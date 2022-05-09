@@ -1,18 +1,16 @@
 
 import pandapower as pp, pandapower.networks as pn
-from pandas import read_excel, DataFrame
+from pandas import DataFrame
 import numpy as np
-from sklearn.decomposition import PCA
+import skbio
+from sklearn.cluster import KMeans
 
-path = r'D:\Documentos\Maestría\Tesis\Pandapower'
-name = 'businfo'
-df_load = read_excel(path+'\\'+name+'.xlsx')
-name = 'geninfo'
-df_gen = read_excel(path+'\\'+name+'.xlsx')
+path = r'/home/lucy/Documentos/PandaPower'
+
 
 def save_csv(matrix, name):
     df = DataFrame(matrix)
-    df.to_csv(path+'\\'+name+'.csv')
+    df.to_csv(path+'/'+name+'.csv', encoding='latin-1')
 
 net = pn.case39()
 
@@ -21,7 +19,7 @@ pp.runpp(net)
 J = net._ppc["internal"]["J"].todense()
 save_csv(J, 'J')
 invJ = np.linalg.inv(J)
-save_csv(invJ, 'invJ') 
+# save_csv(invJ, 'invJ') 
 # get pv and pq values from newtonpf()
 pv = net._ppc["internal"]["pv"]
 pq = net._ppc["internal"]["pq"]
@@ -34,9 +32,11 @@ pvpq = np.hstack((pv, pq))
 # get len of pv and pq
 n_pvpq = len(pvpq)
 # get J11, J12, J21, and J22
-# j22 = J[n_pvpq:, n_pvpq:]
-# invJ22 = np.linalg.inv(j22)
-invJ22 = invJ[n_pvpq:, n_pvpq:]
+j22 = J[n_pvpq:, n_pvpq:]
+save_csv(j22, 'J22')
+
+invJ22 = np.linalg.inv(j22)
+# invJ22 = invJ[n_pvpq:, n_pvpq:]
 save_csv(invJ22, 'invJ22')
 # print(f"j22 = {invJ22.shape}")
 # print(invJ22)
@@ -64,9 +64,13 @@ for i in range(m_d.shape[0]):
         if not(-p<np.amax(m_d[i,:])<p):
             if not(-p<m_d[i,j]<p):
                 m_d_n[i,j] = m_d[i,j]/np.amax(m_d[i,:])
-save_csv(m_d_n, 'm_d_n')
+#save_csv(m_d_n, 'm_d_n')
 
-# # Componentes principales
-# pca = PCA(n_components=10)
-# cp = pca.fit(np.asarray(m_d_n))
-# print(cp.singular_values_)
+# # Cordenadas principales
+#PCoA = skbio.stats.ordination.pcoa(m_d)
+#print(PCoA.samples[['PC1', 'PC2']])
+
+
+## clusterin K-Means
+
+#kmeans = KMeans(n_clusters=2, random_state=0).fit(PCoA.samples[['PC1', 'PC2']])
