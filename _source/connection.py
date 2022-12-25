@@ -20,13 +20,10 @@ def validate_clusters(d_cluster, matrix_conn):
         vector = [int(i) for i in d_cluster.get(key)]
         sub_matrix = np.dot(matrix_conn[:,vector].T,matrix_conn[:,vector])
         _, r = np.linalg.qr(sub_matrix)
-        print(r)
         
         if not(np.any(r)):
-            print(r)
-            return False, "key %s 1"%key
+            return False
         index = np.where(abs(np.sum(r,axis=1)- r.diagonal())<1e-5)
         if (len(index)>1):
-            print(r)
-            return False, "key %s 2"%key
-    return True, ""
+            return False
+    return True

@@ -67,10 +67,10 @@ for i in range(m_d.shape[0]):
 #save_csv(m_d_n, 'm_d_n')
 
 # # Cordenadas principales
-#PCoA = skbio.stats.ordination.pcoa(m_d)
-#print(PCoA.samples[['PC1', 'PC2']])
+PCoA = skbio.stats.ordination.pcoa(m_d)
+print(PCoA.samples[['PC1', 'PC2']])
 
 
 ## clusterin K-Means
 
-#kmeans = KMeans(n_clusters=2, random_state=0).fit(PCoA.samples[['PC1', 'PC2']])
+kmeans = KMeans(n_clusters=2, random_state=0).fit(PCoA.samples[['PC1', 'PC2']])

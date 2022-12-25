@@ -7,6 +7,7 @@ from _source.dsbus_dv import dSbus_dV
 from numpy.core.multiarray import array
 from sklearn.cluster import KMeans
 from sklearn_extensions.fuzzy_kmeans import FuzzyKMeans
+from _source.connection import validate_clusters, create_matrix
 
 # ruta de resultados
 path = r'/home/lucy/Documentos/PandaPower/Resultados'
@@ -38,6 +39,7 @@ V = net._ppc["internal"]["V"]
 pq = net._ppc["internal"]["pq"]
 pv = net._ppc["internal"]["pv"]
 ref = net._ppc["internal"]["ref"]
+matrix_conn = create_matrix(net)
 
 # create dS_dVm matrix 
 dS_dVm, dS_dVa = dSbus_dV(Ybus, V)
@@ -87,10 +89,10 @@ labels_fk = list(fkmeans.labels_)
 #centroids = fkmeans.cluster_centers_
 
 # diccionario de clusterings kmeans
-d_clusters_k = dict((i, []) for i in range(n_clusters))
-for i,n in enumerate(nodos):
-    d_clusters_k[labels_k[i]].append(n)
-print("Clusters KMeans",d_clusters_k)
+# d_clusters_k = dict((i, []) for i in range(n_clusters))
+# for i,n in enumerate(nodos):
+#     d_clusters_k[labels_k[i]].append(n)
+# print("Clusters KMeans",d_clusters_k)
 
 # diccionario de clusterings fuzzy kmeans
 d_clusters_fk = dict((i, []) for i in range(n_clusters))
@@ -98,3 +100,6 @@ for i,n in enumerate(nodos):
     d_clusters_fk[labels_fk[i]].append(n)
 
 print("Clusters Fuzzy KMeans",d_clusters_fk)
+
+validate = validate_clusters(d_clusters_fk, matrix_conn)
+print("Validate Clustering: %s"%('Cerrado' if validate else 'Abierto'))
