@@ -8,7 +8,10 @@
 6,299.0771317360829,1.0,3,0.0,True,1.0,1.00408742467761,100.0,,1,0.9522,,4,ol,15.2352
 7,307.99150227963224,1.0,3,0.0,True,1.0,0.83673952056468,100.0,,1,0.9522,,13,ol,15.354225
 8,96.72092039751114,1.0,4,0.0,True,1.0,2.00817484935522,100.0,,1,0.23805,,5,ol,3.09465
-9,328.9402730569734,1.0,4,0.0,True,1.0,1.50613113701642,100.0,,1,0.9522,,7,ol,13.3308
+9,                            |___/            
+lucy@lucy:~/Documentos/Git-Hub/PowerSystem$ source env/bin/activate
+(env) lucy@lucy:~/Documentos/Git-Hub/PowerSystem$ pip install matplotlib
+WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7f9ef4ffe130>: Failed to establ328.9402730569734,1.0,4,0.0,True,1.0,1.50613113701642,100.0,,1,0.9522,,7,ol,13.3308
 10,251.83096785527093,1.0,5,0.0,True,1.0,1.50613113701642,100.0,,1,0.71415,,6,ol,10.9503
 11,309.5515171247534,1.0,5,0.0,True,1.0,0.80326993974209,100.0,,1,0.833175,,10,ol,9.76005
 12,173.83022559921358,1.0,6,0.0,True,1.0,1.50613113701642,100.0,,1,0.4761,,7,ol,5.47515
