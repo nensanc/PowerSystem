@@ -1,10 +1,11 @@
+import pandapower.networks as pp_net
+import pandapower as pp
 
-
-class Equations(object):
+class GetVariablesSystem(object):
     '''
         Class encargada de manejar las ecuaciones del flujo de carga
     '''
-    def __init__(self, voltage, baseMVA) -> None:
+    def __init__(self, system) -> None:
         '''
             Está función instancia la clase Equations 
             input
@@ -13,9 +14,17 @@ class Equations(object):
             return
                 None
         '''
-        self.voltage = voltage
-        self.baseMVA = baseMVA
-    def get_branchstatus(self, line):
+        if system=='ieee57':
+            self.system = pp_net.case57()
+        elif system=='ieee118':
+            self.system = pp_net.case118()
+        else:
+            self.system = None
+    def _get_ijc_from_system(self):
+        return {'i':list(self.system.bus.index.values),
+                'j':list(self.system.bus.index.values),
+                'c':list(self.system.line.index.values)}
+    def _get_branchstatus(self):
         '''
             Está función entrega el estado de las líneas, si están operativas o no.
             input
@@ -26,15 +35,15 @@ class Equations(object):
         '''
         branchstatus = []
         c_line = 0
-        for i,j in list(zip(list(line['from_bus'], list(line['to_bus'])))):
+        for i,j in list(zip(list(self.system.line['from_bus']), list(self.system.line['to_bus']))):
             branchstatus.append((i, j, c_line))
             c_line +=1
         c_line = 0
-        for j,i in list(zip(list(line['to_bus'], list(line['from_bus'])))):
+        for j,i in list(zip(list(self.system.line['to_bus']), list(self.system.line['from_bus']))):
             branchstatus.append((j, i, c_line))
             c_line +=1
         return branchstatus
-    def get_rate(self, line):
+    def _get_rate(self, line):
         '''
             Está función entrega los mva de la líneas 
             input
