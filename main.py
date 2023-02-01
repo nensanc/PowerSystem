@@ -22,6 +22,6 @@ model = CreateModel(ijc_values, print_sec=True)
 model._add_var_p_line()
 model._add_var_q_line()
 
-# agregamos la restricción de máxima potencia aparente
+# ------------ Agregamos las restricciones del modelo ---------------#
 model._add_power_s_constraint(branchstatus, ratio)
 
