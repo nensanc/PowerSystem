@@ -6,22 +6,24 @@ print('\n***Inicia el script***\n')
 # istanciamos la clase para obtener las variables del sistema
 system = GetVariablesSystem('ieee57', print_sec=True)
 
-# get las variables i, j, c del sistema
-ijc_values = system._get_ijc_from_system()
 
-# get branchstatus
+# ------------ Creamos las variables del sistema ---------------#
+system_param = system._get_param_from_system()
 branchstatus = system._get_branchstatus()
-
-# get rate lines
 ratio = system._get_ratio()
+g,b = system._get_conductance_susceptance()
 
-# instanciamos el modelo
-model = CreateModel(ijc_values, print_sec=True)
+# instanciamos la clase para el model ode optimización
+model = CreateModel(system_param, print_sec=True)
 
-# ------------ Creamos las variables del modelo ---------------#
+
+# -------------- Creamos las variables del modelo --------------#
 model._add_var_p_line()
 model._add_var_q_line()
+model._add_var_v_bus()
+model._add_var_theta_bus()
 
 # ------------ Agregamos las restricciones del modelo ---------------#
 model._add_power_s_constraint(branchstatus, ratio)
+model._add_power_p_constraint(branchstatus, ratio, g, b)
 
