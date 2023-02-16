@@ -161,8 +161,10 @@ sqr(V_LineP(i,j,c,t)) + sqr(V_LineQ(i,j,c,t)) =l= sqr(rateA(i,j,c));
 * Real power flowing from bus i into bus j along line c
 c_LinePij(i,j,c,t)$(branchstatus(i,j,c,t))..
          V_LineP(i,j,c,t) =e=
+         
             (g(i,j,c) * sqr(V_V(i,t)) / sqr(ratio(i,j,c)))
             - (V_V(i,t) * V_V(j,t) / ratio(i,j,c)) *
+
                 (  g(i,j,c) * cos(V_Theta(i,t) - V_Theta(j,t) - angle(i,j,c))
                  + b(i,j,c) * sin(V_Theta(i,t) - V_Theta(j,t) - angle(i,j,c)))
 ;
@@ -170,8 +172,10 @@ c_LinePij(i,j,c,t)$(branchstatus(i,j,c,t))..
 *Real power flowing from bus j into bus i along line c
 c_LinePji(i,j,c,t)$(branchstatus(i,j,c,t))..
          V_LineP(j,i,c,t) =e=
+
            g(i,j,c) * sqr(V_V(j,t))
            - (V_V(i,t) * V_V(j,t) / ratio(i,j,c)) *
+
                (  g(i,j,c) * cos(V_Theta(j,t) - V_Theta(i,t) + angle(i,j,c))
                 + b(i,j,c) * sin(V_Theta(j,t) - V_Theta(i,t) + angle(i,j,c)))
 ;
@@ -181,6 +185,7 @@ c_LineQij(i,j,c,t)$(branchstatus(i,j,c,t))..
          V_LineQ(i,j,c,t) =e=
             - (sqr(V_V(i,t)) * (b(i,j,c) + bc(i,j,c)/2) / sqr(ratio(i,j,c)))
             - (V_V(i,t) * V_V(j,t) / ratio(i,j,c)) *
+            
                 (  g(i,j,c) * sin(V_Theta(i,t) - V_Theta(j,t) - angle(i,j,c))
                  - b(i,j,c) * cos(V_Theta(i,t) - V_Theta(j,t) - angle(i,j,c)))
 ;

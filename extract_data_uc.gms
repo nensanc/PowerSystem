@@ -68,7 +68,7 @@ $LOAD businfo, geninfo, branchinfo, fuelinfo
 $LOAD interface, interfacemap, interfaceinfo, interface_t
 
 * Option to use elastic demand bidding turned on
-$if %demandbids% == 1 $LOADR demandbid_t, demandbid_s, demandbid, demandbidmap, demandbidinfo
+$if %demandbids% == 1 $LOADR demandbid_t, demandbid_s, demandbid, ratio, demandbidinfo
 $GDXIN
 
 *==== SECTION: Validity of options
