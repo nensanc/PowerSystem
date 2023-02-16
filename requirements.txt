@@ -1,0 +1,9 @@
+networkx==2.8.8
+numpy==1.23.5
+pandapower==2.10.1
+pandas==1.5.2
+Pyomo==6.4.4
+scikit_bio==0.5.8
+scikit_learn==1.2.1
+scipy==1.10.0
+sklearn_extensions==0.0.2

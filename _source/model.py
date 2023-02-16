@@ -315,11 +315,11 @@ class CreateModel(object):
         if self.print_sec: print('Se agrega la función objetivo')
         def obj_rule(model):
             return  (
-                    0.01 * sum((model.V_Shunt[bus, sht, t] - model.V_Shunt[bus, sht, t-1])**2
-                        for bus in model.i
-                        for sht in self.model.shunt
-                        for t in model.t 
-                        if t >= 2)
+                    # 0.01 * sum((model.V_Shunt[bus, sht, t] - model.V_Shunt[bus, sht, t-1])**2
+                    #     for bus in model.i
+                    #     for sht in self.model.shunt
+                    #     for t in model.t 
+                    #     if t >= 2)
                     +300000 * sum((model.V_Vbus[bus, t] - v_ref.get((bus, t)))**2
                         for bus in model.i
                         for t in model.t 
