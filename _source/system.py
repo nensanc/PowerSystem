@@ -19,7 +19,7 @@ class GetVariablesSystem(object):
         self.model_name = f'--- Model -> {system} ---'
         if system=='ieee57':
             self.system = pp_net.case57()
-            self.system.line.iloc[:, 6] = self.system.line.iloc[:, 6]/100
+            self.system.line.iloc[:, 6] = self.system.line.iloc[:, 6]/10
             self.system.bus.iloc[:, 1] = 1.1
             self.system.bus.iloc[:, 2] = 0.8
         elif system=='ieee118':

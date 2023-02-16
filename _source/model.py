@@ -1,6 +1,9 @@
 import pyomo.environ as pyomo
 import numpy as np
 from pandas import DataFrame
+import logging
+# Configurar el nivel de registro
+logging.basicConfig(level=logging.INFO)
 class CreateModel(object):
     '''
         Class encargada de crar el modelo de optimización
@@ -181,9 +184,11 @@ class CreateModel(object):
         '''
         def c_SLimit(model, i, j, c , t):
             if branchstatus.get((i,j,c)):
-                return (np.power(model.V_LineP[i, j, c, t], 2)\
-                        + np.power(model.V_LineQ[i, j, c, t], 2))\
-                        <= np.power(ratio_line[(i, j, c)], 2)
+                return (
+                        (model.V_LineP[i, j, c, t])**2
+                        + (model.V_LineQ[i, j, c, t])**2
+                        <= (ratio_line[(i, j, c)])**2
+                    )
             else:
                 return pyomo.Constraint.Skip
         if self.print_sec: print('Se agrega la restricción de potencia aparente')
@@ -332,8 +337,10 @@ class CreateModel(object):
             return
                 None
         '''
-        if self.print_sec: print('Se inicia la resolución del modelo...')
-        result = pyomo.SolverFactory('solver/couenne').solve(self.model)
+        if self.print_sec: print('Se inicia la resolución del modelo...\n')
+        solver = pyomo.SolverFactory('solver/bonmin')
+        solver.options['output_file'] = "bonmin.log" # Especificar el archivo de registro
+        result = solver.solve(self.model)
         result.write()
         return True if result.solver.status.value=='ok' else False
     def save_model_variables(self, path):
@@ -344,10 +351,8 @@ class CreateModel(object):
             return
                 None
         '''
-        # Crear un DataFrame de Pandas con los valores de todas las variables de decisión
-        df = DataFrame(columns=self.model.component_objects(pyomo.Var, active=True).keys(), index=[0])
-        for var in self.model.component_objects(pyomo.Var, active=True):
-            df.loc[0, var] = var()
-
-        # Exportar los valores de las variables de decisión a un archivo CSV
-        df.to_csv(f'{path}/resultados.csv', index=False)
+        variables = list(self.model.component_objects(pyomo.Var, active=True))
+        if self.print_sec: print('Se guardan todas las variables...\n')
+        for e in variables:
+            df = DataFrame(list(e.get_values().items()))
+            df.to_csv(f'{path}/Var_{e.name}.csv', index=False)
