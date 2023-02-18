@@ -17,8 +17,9 @@ class GetVariablesSystem(object):
         '''
         self.print_sec = print_sec
         self.model_name = f'--- Model -> {system} ---'
-        if system=='ieee57':
-            self.system = pp_net.case57()
+        self.areas = [1,2,3]
+        if system=='ieee9':
+            self.system = pp_net.case9()
             self.system.line.iloc[:, 6] = self.system.line.iloc[:, 6]/10
             self.system.bus.iloc[:, 1] = 1.1
             self.system.bus.iloc[:, 2] = 0.8
@@ -64,6 +65,7 @@ class GetVariablesSystem(object):
             atBus[(gen,bus)] = True
         return {'i':buses,
                 'j':buses,
+                'a':self.areas,
                 'c':list(self.system.line.index.values),
                 'Pd': Pd,
                 'Qd': Qd,

@@ -4,7 +4,7 @@ from _source.system import GetVariablesSystem
 print('\n***Inicia el script***\n')
 
 #** istanciamos la clase para obtener las variables del sistema
-system = GetVariablesSystem('ieee57', print_sec=False)
+system = GetVariablesSystem('ieee9', print_sec=False)
 
 #** ------------ Creamos las variables del sistema ---------------#
 system_param = system._get_param_from_system()
@@ -30,11 +30,11 @@ model._add_var_Shunt_bus()
 model._add_var_pd_elastic()
 
 #** ---------- Agregamos las restricciones del modelo ------------#
-model._add_power_s_constraint(branchstatus, ratio_line)
+#model._add_power_s_constraint(branchstatus, ratio_line)
 model._add_power_p_constraint(branchstatus, ratio_trafo, g, b)
-model._add_power_q_constraint(branchstatus, ratio_trafo, g, b)
-# model._add_p_balanced_constraint(branchstatus, genstatus, demandbidmap)
-# model._add_q_balanced_constraint(branchstatus, genstatus)
+#model._add_power_q_constraint(branchstatus, ratio_trafo, g, b)
+model._add_p_balanced_constraint(branchstatus, genstatus, demandbidmap)
+#model._add_q_balanced_constraint(branchstatus, genstatus)
 
 #** ------------- Agregamos la función objetivo ------------------#
 model._add_function_obj(system_values.get('init_bus_v'))

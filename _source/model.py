@@ -23,6 +23,7 @@ class CreateModel(object):
         self.model.name = system_param.get('model_name')
         self.model.i = pyomo.Set(initialize=[i for i in system_param.get('i')], doc='Terminal i')
         self.model.j = pyomo.Set(initialize=[j for j in system_param.get('j')], doc='Terminal j')
+        self.model.a = pyomo.Set(initialize=[a for a in system_param.get('a')], doc='áreas')
         self.model.c = pyomo.Set(initialize=[c for c in system_param.get('c')], doc='Lines')
         self.model.gen = pyomo.Set(initialize=[gen for gen in system_param.get('gen')], doc='Gen')
         self.model.demandbid = pyomo.Set(initialize=[id_ for id_ in system_param.get('demandbid')], doc='Demandbid')
@@ -213,11 +214,11 @@ class CreateModel(object):
         if self.print_sec: print('Se agrega la restricción de potencia activa en la linea c (i, j)')
         def line_constraint(model, i, j, c, t):
             if branchstatus.get((i,j,c)):
-                return (g[i,j,c] * (model.V_Vbus[i,t]**2) / (ratio_trafo[i,j,c]**2)) \
-                    - (model.V_Vbus[i,t] * model.V_Vbus[j,t] / ratio_trafo[i,j,c]) * \
-                        (g[i,j,c] * pyomo.cos(model.V_Theta[i,t] - model.V_Theta[j,t]) + 
-                        b[i,j,c] * pyomo.sin(model.V_Theta[i,t] - model.V_Theta[j,t])) \
-                    == model.V_LineP[i,j,c,t]
+                return ((g[i,j,c] * (model.V_Vbus[i,t]**2) / (ratio_trafo[i,j,c]**2))
+                    - (model.V_Vbus[i,t] * model.V_Vbus[j,t] / ratio_trafo[i,j,c])
+                    * (g[i,j,c] * pyomo.cos(model.V_Theta[i,t] - model.V_Theta[j,t]) 
+                    + b[i,j,c] * pyomo.sin(model.V_Theta[i,t] - model.V_Theta[j,t]))
+                    == model.V_LineP[i,j,c,t])
             else:
                 return pyomo.Constraint.Skip
         self.model.line_p_limit = pyomo.Constraint(
@@ -320,11 +321,11 @@ class CreateModel(object):
                     #     for sht in self.model.shunt
                     #     for t in model.t 
                     #     if t >= 2)
-                    +300000 * sum((model.V_Vbus[bus, t] - v_ref.get((bus, t)))**2
+                    +100 * sum((model.V_Vbus[bus, t] - v_ref.get((bus, t)))**2
                         for bus in model.i
                         for t in model.t 
                         if v_ref.get((bus, t)))
-                    +100 * sum(model.V_Qgen[gen, t]**2 
+                    + sum(model.V_Qgen[gen, t]**2 
                         for gen in model.gen
                         for t in model.t)
                 )
