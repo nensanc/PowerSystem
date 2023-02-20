@@ -24,15 +24,15 @@ model._add_var_p_line(system_values.get('init_line_p'))
 model._add_var_q_line(system_values.get('init_line_q'))
 model._add_var_v_bus(system_values.get('init_bus_v'))
 model._add_var_theta_bus(system_values.get('init_bus_theta'))
-model._add_var_p_gen(system_values.get('init_gen_p'))
-model._add_var_q_gen(system_values.get('init_gen_q'))
-model._add_var_Shunt_bus()
+model._add_var_p_gen(system_values.get('init_gen_p'), system_values.get('init_slack_p'))
+model._add_var_q_gen(system_values.get('init_gen_q'), system_values.get('init_slack_q'))
+#model._add_var_Shunt_bus()
 model._add_var_pd_elastic()
 
 #** ---------- Agregamos las restricciones del modelo ------------#
-#model._add_power_s_constraint(branchstatus, ratio_line)
+model._add_power_s_constraint(branchstatus, ratio_line)
 model._add_power_p_constraint(branchstatus, ratio_trafo, g, b)
-#model._add_power_q_constraint(branchstatus, ratio_trafo, g, b)
+model._add_power_q_constraint(branchstatus, ratio_trafo, g, b)
 model._add_p_balanced_constraint(branchstatus, genstatus, demandbidmap)
 #model._add_q_balanced_constraint(branchstatus, genstatus)
 
@@ -44,5 +44,5 @@ is_solve = model.solve_model()
 
 #** ----------------- Exportando las variables -------------------#
 if is_solve:
-    path = r"/home/lucy/Documentos/State of Art/Resultados"
+    path = r"/home/lucy/Documents/Resultados"
     model.save_model_variables(path)

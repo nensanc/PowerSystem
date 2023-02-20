@@ -20,8 +20,8 @@ class GetVariablesSystem(object):
         self.areas = [1,2,3]
         if system=='ieee9':
             self.system = pp_net.case9()
-            self.system.line.iloc[:, 6] = self.system.line.iloc[:, 6]/10
-            self.system.bus.iloc[:, 1] = 1.1
+            self.system.line.iloc[:, 6] = self.system.line.iloc[:, 6]/100
+            self.system.bus.iloc[:, 1] = 1.2
             self.system.bus.iloc[:, 2] = 0.8
         elif system=='ieee118':
             self.system = pp_net.case118()
@@ -34,6 +34,7 @@ class GetVariablesSystem(object):
         self.scaling = {1:.63, 2:.62, 3:.6, 4:.58, 5:.59, 6:.65, 7:.72, 8:.85, 
                         9:.95, 10:.99, 11:1, 12:.99, 13:.93, 14:.92, 15:.9,16:.88, 
                         17:.9, 18:.9, 19:.96, 20:.98, 21:.96, 22:.9, 23:.8, 24:.7 }
+        self.multiplier = 1.2
         if self.print_sec: print(f'Se crea el objeto del sistema a trabajar * {system} *')
     def _get_param_from_system(self):
         '''
@@ -50,19 +51,26 @@ class GetVariablesSystem(object):
             buses.append(int(row['name'])-1)
             for t in range(1, 25):
                 bounds_bus[(int(row['name'])-1, t)] = (row['min_vm_pu'], row['max_vm_pu'])
-        Pd, Qd, gen_bound_p, gen_bound_q = {}, {}, {}, {}
+        Pd, Qd, gen_bound_p, gen_bound_q, slack_bound_p, slack_bound_q = {}, {}, {}, {},{},{}
         for t in range(1,25):
             for i in range(self.system.load.shape[0]):
                 row = self.system.load.iloc[i]
-                Pd[(t,row['bus'])] = row['p_mw']*self.scaling[t]
-                Qd[(t,row['bus'])] = row['q_mvar']*self.scaling[t]
+                Pd[(row['bus'],t)] = row['p_mw']*self.scaling[t]
+                Qd[(row['bus'],t)] = row['q_mvar']*self.scaling[t]
             for i in range(self.system.gen.shape[0]):
                 row = self.system.gen.iloc[i]
                 gen_bound_p[(i, t)] = (row['min_p_mw'], row['max_p_mw'])
                 gen_bound_q[(i, t)] = (row['min_q_mvar'], row['max_q_mvar'])
+            for i in range(self.system.ext_grid.shape[0]):
+                row = self.system.ext_grid.iloc[i]
+                slack_bound_p[(i, t)] = (row['min_p_mw'], row['max_p_mw'])
+                slack_bound_q[(i, t)] = (row['min_q_mvar'], row['max_q_mvar'])
         atBus = {}
         for gen,bus in enumerate(list(self.system.gen['bus'])):
             atBus[(gen,bus)] = True
+        atBusSlack = {}
+        for gen,bus in enumerate(list(self.system.ext_grid['bus'])):
+            atBusSlack[(gen,bus)] = True
         return {'i':buses,
                 'j':buses,
                 'a':self.areas,
@@ -72,10 +80,14 @@ class GetVariablesSystem(object):
                 'buses': buses,
                 'bounds_bus':bounds_bus,
                 'atBus': atBus,
+                'atBusSlack': atBusSlack,
                 'demandbid': list(self.system.load.index.values),
                 'gen':list(self.system.gen.index.values),
+                'slack':list(self.system.ext_grid.index.values),
                 'gen_bound_p': gen_bound_p,
                 'gen_bound_q': gen_bound_q,
+                'slack_bound_p': slack_bound_p,
+                'slack_bound_q': slack_bound_q,
                 'model_name': self.model_name,
                 }
     def _get_values_from_system(self):
@@ -94,12 +106,12 @@ class GetVariablesSystem(object):
                             list(self.system.line['to_bus'])
                             )
                         )
-        init_line_p, init_line_q = {},{}
+        init_line_p, init_line_q, init_slack_p, init_slack_q = {},{},{},{}
         init_gen_p, init_gen_q = {},{}
         for t in range(1,25):
-            self.system.gen.iloc[:,4] = self.system.gen.iloc[:,4]*self.scaling.get(t)
-            self.system.load.iloc[:,6] = self.system.load.iloc[:,6]*self.scaling.get(t)
-            self.system.load.iloc[:,7] = self.system.load.iloc[:,7]*self.scaling.get(t)
+            self.system.gen.iloc[:,4] = self.system.gen.iloc[:,4]*self.scaling.get(t)*self.multiplier
+            self.system.load.iloc[:,6] = self.system.load.iloc[:,6]*self.scaling.get(t)*self.multiplier
+            self.system.load.iloc[:,7] = self.system.load.iloc[:,7]*self.scaling.get(t)*self.multiplier
             pp.runpp(self.system)
             for i in range(self.system.res_bus.shape[0]):
                 row = self.system.res_bus.iloc[i]
@@ -118,13 +130,19 @@ class GetVariablesSystem(object):
                             list(self.system.res_gen['q_mvar']))):
                 init_gen_p[(c_gen, t)] = p
                 init_gen_q[(c_gen, t)] = q
+            for p, q in list(zip(list(self.system.res_ext_grid['p_mw']),
+                            list(self.system.res_ext_grid['q_mvar']))):
+                init_slack_p[(c_gen, t)] = p
+                init_slack_q[(c_gen, t)] = q
         return {
                 'init_bus_theta': init_bus_theta,
                 'init_bus_v': init_bus_v,
                 'init_line_p': init_line_p,
                 'init_line_q': init_line_q,
                 'init_gen_p': init_gen_p,
-                'init_gen_q': init_gen_q
+                'init_gen_q': init_gen_q,
+                'init_slack_p': init_slack_p,
+                'init_slack_q': init_slack_q
                 }
     def _get_branchstatus(self):
         '''
@@ -146,7 +164,6 @@ class GetVariablesSystem(object):
                         )
         for i,j in buses_line:
             branchstatus[(i, j, c_line)] = True
-            branchstatus[(j, i, c_line)] = True
             c_line +=1
         return branchstatus
     def _get_conductance_susceptance(self):
@@ -227,7 +244,7 @@ class GetVariablesSystem(object):
                                 genstatus(gen)
         '''
         if self.print_sec: print('Se crea la variable de genstatus')
-        return dict(((bus, gen), True) for gen,bus in enumerate(list(self.system.gen['bus'])))
+        return dict(((gen, bus), True) for gen,bus in enumerate(list(self.system.gen['bus'])))
     def _get_demandbidmap(self):
         '''
             Está función entrega el id de la demanda y su nodo de conexión

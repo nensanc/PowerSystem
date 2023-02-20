@@ -26,6 +26,7 @@ class CreateModel(object):
         self.model.a = pyomo.Set(initialize=[a for a in system_param.get('a')], doc='áreas')
         self.model.c = pyomo.Set(initialize=[c for c in system_param.get('c')], doc='Lines')
         self.model.gen = pyomo.Set(initialize=[gen for gen in system_param.get('gen')], doc='Gen')
+        self.model.slack = pyomo.Set(initialize=[gen for gen in system_param.get('slack')], doc='Slack')
         self.model.demandbid = pyomo.Set(initialize=[id_ for id_ in system_param.get('demandbid')], doc='Demandbid')
         self.model.bus = pyomo.Set(initialize=[bus for bus in system_param.get('buses')], doc='Buses')
         self.model.shunt = pyomo.Set(initialize=[sht for sht in range(5)], doc='Shunt')
@@ -37,6 +38,7 @@ class CreateModel(object):
         self.Qd = system_param.get('Qd')
         self.v_ref = system_param.get('v_ref')
         self.atBus = system_param.get('atBus')
+        self.atBusSlack = system_param.get('atBusSlack')
         self.model.t = pyomo.Set(initialize=[t for t in range(1,25)], doc='Time')
         if self.print_sec: print('Se crea el objeto del modelo de optimización')
     def _add_var_p_line(self, init_values):
@@ -88,7 +90,7 @@ class CreateModel(object):
                 self.model.bus,
                 self.model.t, 
                 within=pyomo.Reals,
-                bounds=self.bounds_bus,
+                #bounds=self.bounds_bus,
                 initialize=init_values,
                 doc='Voltage in bus b at time t'
             )
@@ -108,7 +110,7 @@ class CreateModel(object):
                 initialize=init_values,
                 doc='angle in bus b at time t'
             )
-    def _add_var_p_gen(self, init_values):
+    def _add_var_p_gen(self, init_values, init_values_slack):
         '''
             Está función crea la variable de potencia activa de los generadores V_Pgen(gen,t)
             imput    
@@ -121,11 +123,19 @@ class CreateModel(object):
                 self.model.gen,
                 self.model.t, 
                 within=pyomo.Reals,
-                bounds=self.gen_bound_p,
+                #bounds=self.gen_bound_p,
                 initialize=init_values,
                 doc='potencia in gen g at time t'
             )
-    def _add_var_q_gen(self, init_values):
+        self.model.V_Pslack = pyomo.Var(
+                self.model.slack,
+                self.model.t, 
+                within=pyomo.Reals,
+                #bounds=self.gen_bound_p,
+                initialize=init_values_slack,
+                doc='potencia in gen g at time t'
+            )
+    def _add_var_q_gen(self, init_values, init_values_slack):
         '''
             Está función crea la variable de potencia reactiva de los generadores V_Qgen(gen,t)
             imput    
@@ -138,8 +148,16 @@ class CreateModel(object):
                 self.model.gen,
                 self.model.t, 
                 within=pyomo.Reals,
-                bounds=self.gen_bound_q,
+                #bounds=self.gen_bound_q,
                 initialize=init_values,
+                doc='potencia in gen g at time t'
+            )
+        self.model.V_Qslack = pyomo.Var(
+                self.model.slack,
+                self.model.t, 
+                within=pyomo.Reals,
+                #bounds=self.gen_bound_p,
+                initialize=init_values_slack,
                 doc='potencia in gen g at time t'
             )
     def _add_var_Shunt_bus(self):
@@ -155,7 +173,7 @@ class CreateModel(object):
                 self.model.i,
                 self.model.shunt,
                 self.model.t, 
-                within=pyomo.Binary,
+                within=pyomo.NonNegativeIntegers,
                 initialize=0,
                 doc='Shunt in nodo i con sht at time t'
             )
@@ -170,7 +188,7 @@ class CreateModel(object):
         if self.print_sec: print('Se agrega la variable V_Pd_elastic')
         self.model.V_Pd_elastic = pyomo.Var(
                 self.model.demandbid,
-                self.model.t, 
+                self.model.i, 
                 within=pyomo.Reals,
                 doc='potencia in gen g at time t'
             )
@@ -211,8 +229,8 @@ class CreateModel(object):
             return
                 None
         '''
-        if self.print_sec: print('Se agrega la restricción de potencia activa en la linea c (i, j)')
-        def line_constraint(model, i, j, c, t):
+        if self.print_sec: print('Se agrega la restricción de potencia activa')
+        def line_constraint_ij(model, i, j, c, t):
             if branchstatus.get((i,j,c)):
                 return ((g[i,j,c] * (model.V_Vbus[i,t]**2) / (ratio_trafo[i,j,c]**2))
                     - (model.V_Vbus[i,t] * model.V_Vbus[j,t] / ratio_trafo[i,j,c])
@@ -221,13 +239,31 @@ class CreateModel(object):
                     == model.V_LineP[i,j,c,t])
             else:
                 return pyomo.Constraint.Skip
-        self.model.line_p_limit = pyomo.Constraint(
+        self.model.line_p_limit_ij = pyomo.Constraint(
                                         self.model.i,
                                         self.model.j,
                                         self.model.c,
                                         self.model.t, 
-                                        rule=line_constraint,
+                                        rule=line_constraint_ij,
                                         doc='Active power limit on line ijc'
+                                    )
+
+        def line_constraint_ji(model, j, i, c, t):
+            if branchstatus.get((i, j, c)):
+                return (g[i,j,c] * model.V_Vbus[j,t]**2
+                    - (model.V_Vbus[i,t] * model.V_Vbus[j,t] / ratio_trafo[i,j,c])
+                    * (g[i,j,c] * pyomo.cos(model.V_Theta[j,t] - model.V_Theta[i,t]) 
+                    + b[i,j,c] * pyomo.sin(model.V_Theta[j,t] - model.V_Theta[i,t]))
+                    == model.V_LineP[j,i,c,t])
+            else:
+                return pyomo.Constraint.Skip
+        self.model.line_p_limit_ji = pyomo.Constraint(
+                                        self.model.j,
+                                        self.model.i,
+                                        self.model.c,
+                                        self.model.t, 
+                                        rule=line_constraint_ji,
+                                        doc='Active power limit on line jic'
                                     )
     def _add_power_q_constraint(self, branchstatus, ratio_trafo, g , b, bc=None, angle=None):
         '''
@@ -241,22 +277,39 @@ class CreateModel(object):
             return
                 None
         '''
-        if self.print_sec: print('Se agrega la restricción de potencia reactiva en la linea c (i, j)')
-        def line_constraint(model, i, j, c, t):
+        if self.print_sec: print('Se agrega la restricción de potencia reactiva')
+        def line_constraint_ij(model, i, j, c, t):
             if branchstatus.get((i,j,c)):
-                return -(model.V_Vbus[i,t]**2 * b[i,j,c] / ratio_trafo[i,j,c]**2) \
-                        - (model.V_Vbus[i,t] * model.V_Vbus[j,t] / ratio_trafo[i,j,c]) \
-                        * (g[i,j,c] * pyomo.sin(model.V_Theta[i,t] - model.V_Theta[i,t]) \
-                        - b[i,j,c] * pyomo.cos(model.V_Theta[i,t] - model.V_Theta[i,t])) \
-                    == model.V_LineQ[i,j,c,t]
+                return (-(model.V_Vbus[i,t]**2 * b[i,j,c] / ratio_trafo[i,j,c]**2)
+                        - (model.V_Vbus[i,t] * model.V_Vbus[j,t] / ratio_trafo[i,j,c]) 
+                        * (g[i,j,c] * pyomo.sin(model.V_Theta[i,t] - model.V_Theta[j,t])
+                        - b[i,j,c] * pyomo.cos(model.V_Theta[i,t] - model.V_Theta[j,t]))
+                    == model.V_LineQ[i,j,c,t])
             else:
                 return pyomo.Constraint.Skip
-        self.model.line_q_limit = pyomo.Constraint(
+        self.model.line_q_limit_ij = pyomo.Constraint(
                                         self.model.i,
                                         self.model.j,
                                         self.model.c,
                                         self.model.t, 
-                                        rule=line_constraint,
+                                        rule=line_constraint_ij,
+                                        doc='Reactive power limit on line ijc'
+                                    )
+        def line_constraint_ji(model, j, i, c, t):
+            if branchstatus.get((i,j,c)):
+                return (-model.V_Vbus[j,t]**2 * b[i,j,c]
+                        - (model.V_Vbus[i,t] * model.V_Vbus[j,t] / ratio_trafo[i,j,c])
+                        * (g[i,j,c] * pyomo.sin(model.V_Theta[j,t] - model.V_Theta[i,t])
+                        - b[i,j,c] * pyomo.cos(model.V_Theta[j,t] - model.V_Theta[i,t]))
+                    == model.V_LineQ[j,i,c,t])
+            else:
+                return pyomo.Constraint.Skip
+        self.model.line_q_limit_ji = pyomo.Constraint(
+                                        self.model.j,
+                                        self.model.i,                                        
+                                        self.model.c,
+                                        self.model.t, 
+                                        rule=line_constraint_ji,
                                         doc='Reactive power limit on line jic'
                                     )
     def _add_p_balanced_constraint(self, branchstatus, genstatus, demandbidmap, Gs=None):
@@ -271,12 +324,13 @@ class CreateModel(object):
         '''
         if self.print_sec: print('Se agrega la restricción de balance de potencia activa')
         def balance_eqn_rule(model, i, t):
-            return (sum(model.V_Pgen[gen, t] for gen in self.model.gen if self.atBus.get((gen,i)) and genstatus.get(gen))
+            return (sum(model.V_Pgen[gen, t] for gen in self.model.gen if self.atBus.get((gen,i)) and genstatus.get((gen,i)))
+                    + sum(model.V_Pslack[gen, t] for gen in self.model.slack if self.atBusSlack.get((gen,i)))
                     - (self.Pd.get((i,t)) if self.Pd.get((i,t)) else 0)
-                    - sum(model.V_Pd_elastic[demandbid,t] for demandbid in self.model.demandbid if demandbidmap.get((demandbid,i)))
+                    - sum(model.V_Pd_elastic[demandbid,i] for demandbid in self.model.demandbid if demandbidmap.get((demandbid,i)))
                     == sum(model.V_LineP[i,j,c,t] for (_,j,c) in branchstatus if branchstatus.get((i,j,c)))
-                    + sum(model.V_LineP[j,i,c,t] for (_,j,c) in branchstatus if branchstatus.get((j,i,c)))
-                    + model.V_Vbus[i,t]**2)
+                    + sum(model.V_LineP[i,j,c,t] for (j,_,c) in branchstatus if branchstatus.get((j,i,c)))
+                    + model.V_Vbus[i,t]**2*0.7)
         self.model.c_BalanceP = pyomo.Constraint(
                                         self.model.i, 
                                         self.model.t, 
@@ -294,12 +348,14 @@ class CreateModel(object):
         '''
         if self.print_sec: print('Se agrega la restricción de balance de potencia reactiva')
         def balance_eqn_rule(model, i, t):
-            return (sum(model.V_Qgen[gen, t] for gen in self.model.gen if self.atBus.get((gen,i)) and genstatus.get(gen))
+            return (sum(model.V_Qgen[gen, t] for gen in self.model.gen if self.atBus.get((gen,i)) and genstatus.get((gen,i)))
+                    + sum(model.V_Qslack[gen, t] for gen in self.model.slack if self.atBusSlack.get((gen,i)))
                     - (self.Qd.get((i,t)) if self.Qd.get((i,t)) else 0)
                     == sum(model.V_LineQ[i,j,c,t] for (_,j,c) in branchstatus if branchstatus.get((i,j,c)))
-                    + sum(model.V_LineQ[j,i,c,t] for (_,j,c) in branchstatus if branchstatus.get((j,i,c)))
-                    + model.V_Vbus[i,t]**2 
-                    + model.V_Vbus[i,t]**2*(sum(model.V_Shunt[i, sht, t] for sht in self.model.shunt)))
+                    + sum(model.V_LineQ[i,j,c,t] for (j,_,c) in branchstatus if branchstatus.get((j,i,c)))
+                    - model.V_Vbus[i,t]**2
+                    #- model.V_Vbus[i,t]**2*(sum(model.V_Shunt[i, sht, t] for sht in self.model.shunt))
+                    )
         self.model.c_BalanceQ = pyomo.Constraint(
                                         self.model.i, 
                                         self.model.t, 
@@ -321,7 +377,7 @@ class CreateModel(object):
                     #     for sht in self.model.shunt
                     #     for t in model.t 
                     #     if t >= 2)
-                    +100 * sum((model.V_Vbus[bus, t] - v_ref.get((bus, t)))**2
+                    + sum((model.V_Vbus[bus, t] - v_ref.get((bus, t)))**2
                         for bus in model.i
                         for t in model.t 
                         if v_ref.get((bus, t)))
@@ -339,8 +395,9 @@ class CreateModel(object):
                 None
         '''
         if self.print_sec: print('Se inicia la resolución del modelo...\n')
-        solver = pyomo.SolverFactory('solver/bonmin')
+        solver = pyomo.SolverFactory('solver/bonmin', tee=True)
         solver.options['output_file'] = "bonmin.log" # Especificar el archivo de registro
+        solver.options['max_iter'] = 15000
         result = solver.solve(self.model)
         result.write()
         return True if result.solver.status.value=='ok' else False
