@@ -18,11 +18,15 @@ class GetVariablesSystem(object):
         self.print_sec = print_sec
         self.model_name = f'--- Model -> {system} ---'
         self.areas = [1,2,3]
+        self.bus_shunt = [1]
         if system=='ieee9':
             self.system = pp_net.case9()
-            self.system.line.iloc[:, 6] = self.system.line.iloc[:, 6]/100
-            self.system.bus.iloc[:, 1] = 1.2
-            self.system.bus.iloc[:, 2] = 0.8
+            self.system.line.iloc[:, list(self.system.line.columns).index('max_i_ka')] \
+                = self.system.line.iloc[:, list(self.system.line.columns).index('max_i_ka')]/1
+            self.system.bus.iloc[:, list(self.system.bus.columns).index('max_vm_pu')] = 1.1
+            self.system.bus.iloc[:, list(self.system.bus.columns).index('min_vm_pu')] = 0.9
+            self.id_load_p = list(self.system.load.columns).index('p_mw')
+            self.id_load_q = list(self.system.load.columns).index('q_mvar')
         elif system=='ieee118':
             self.system = pp_net.case118()
         else:
@@ -51,12 +55,8 @@ class GetVariablesSystem(object):
             buses.append(int(row['name'])-1)
             for t in range(1, 25):
                 bounds_bus[(int(row['name'])-1, t)] = (row['min_vm_pu'], row['max_vm_pu'])
-        Pd, Qd, gen_bound_p, gen_bound_q, slack_bound_p, slack_bound_q = {}, {}, {}, {},{},{}
+        gen_bound_p, gen_bound_q, slack_bound_p, slack_bound_q = {}, {}, {}, {}
         for t in range(1,25):
-            for i in range(self.system.load.shape[0]):
-                row = self.system.load.iloc[i]
-                Pd[(row['bus'],t)] = row['p_mw']*self.scaling[t]
-                Qd[(row['bus'],t)] = row['q_mvar']*self.scaling[t]
             for i in range(self.system.gen.shape[0]):
                 row = self.system.gen.iloc[i]
                 gen_bound_p[(i, t)] = (row['min_p_mw'], row['max_p_mw'])
@@ -75,8 +75,6 @@ class GetVariablesSystem(object):
                 'j':buses,
                 'a':self.areas,
                 'c':list(self.system.line.index.values),
-                'Pd': Pd,
-                'Qd': Qd,
                 'buses': buses,
                 'bounds_bus':bounds_bus,
                 'atBus': atBus,
@@ -89,6 +87,7 @@ class GetVariablesSystem(object):
                 'slack_bound_p': slack_bound_p,
                 'slack_bound_q': slack_bound_q,
                 'model_name': self.model_name,
+                'bus_shunt': dict((bus, True) for bus in self.bus_shunt)
                 }
     def _get_values_from_system(self):
         '''
@@ -107,12 +106,17 @@ class GetVariablesSystem(object):
                             )
                         )
         init_line_p, init_line_q, init_slack_p, init_slack_q = {},{},{},{}
-        init_gen_p, init_gen_q = {},{}
+        init_gen_p, init_gen_q, bound_gen_q = {},{},{}
+        Pd, Qd = {}, {}
         for t in range(1,25):
-            self.system.gen.iloc[:,4] = self.system.gen.iloc[:,4]*self.scaling.get(t)*self.multiplier
-            self.system.load.iloc[:,6] = self.system.load.iloc[:,6]*self.scaling.get(t)*self.multiplier
-            self.system.load.iloc[:,7] = self.system.load.iloc[:,7]*self.scaling.get(t)*self.multiplier
+            #self.system.gen.iloc[:,4] = self.system.gen.iloc[:,4]*self.scaling.get(t)*self.multiplier
+            self.system.load.iloc[:,self.id_load_p] = self.system.load.iloc[:,self.id_load_p]*self.scaling.get(t)*self.multiplier
+            self.system.load.iloc[:,self.id_load_q] = self.system.load.iloc[:,self.id_load_q]*self.scaling.get(t)*self.multiplier
             pp.runpp(self.system)
+            for i in range(self.system.load.shape[0]):
+                row = self.system.load.iloc[i]
+                Pd[(row['bus'],t)] = row['p_mw']*self.scaling[t]
+                Qd[(row['bus'],t)] = row['q_mvar']*self.scaling[t]
             for i in range(self.system.res_bus.shape[0]):
                 row = self.system.res_bus.iloc[i]
                 init_bus_v[(i, t)] = row['vm_pu']
@@ -130,11 +134,17 @@ class GetVariablesSystem(object):
                             list(self.system.res_gen['q_mvar']))):
                 init_gen_p[(c_gen, t)] = p
                 init_gen_q[(c_gen, t)] = q
+                bound_gen_q[(c_gen, t)] = (0.9*q, 1.1*q) if q>0 else (1.1*q, 0.9*q)
+                c_gen+=1
+            c_gen=0
             for p, q in list(zip(list(self.system.res_ext_grid['p_mw']),
                             list(self.system.res_ext_grid['q_mvar']))):
                 init_slack_p[(c_gen, t)] = p
                 init_slack_q[(c_gen, t)] = q
+                c_gen+=1
         return {
+                'Pd': Pd,
+                'Qd': Qd,
                 'init_bus_theta': init_bus_theta,
                 'init_bus_v': init_bus_v,
                 'init_line_p': init_line_p,
@@ -142,7 +152,8 @@ class GetVariablesSystem(object):
                 'init_gen_p': init_gen_p,
                 'init_gen_q': init_gen_q,
                 'init_slack_p': init_slack_p,
-                'init_slack_q': init_slack_q
+                'init_slack_q': init_slack_q,
+                'bound_gen_q': bound_gen_q,
                 }
     def _get_branchstatus(self):
         '''
