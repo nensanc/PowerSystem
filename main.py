@@ -9,16 +9,15 @@ system = GetVariablesSystem('ieee9', print_sec=False)
 #** ------------ Creamos las variables del sistema ---------------#
 system_param = system._get_param_from_system()
 system_values = system._get_values_from_system()
-branchstatus = system._get_branchstatus()
 genstatus = system._get_genstatus()
 ratio_line = system._get_ratio_line()
 ratio_trafo = system._get_ratio_trafo()
-g,b = system._get_conductance_susceptance()
-demandbidmap = system._get_demandbidmap()
-
-
+g, b = system._get_conductance_susceptance()
+demandbidmap = system._get_demandbidmap()   
+adjust_values = system._get_adjust_values()
+4
 #** instanciamos la clase para el modelo de optimización
-model = CreateModel(system_param, system_values, print_sec=True)
+model = CreateModel(system_param, system_values, adjust_values, print_sec=True)
 
 #** -------------- Creamos las variables del modelo --------------#
 model.init_model()
@@ -33,11 +32,11 @@ model._add_var_pd_elastic()
 model._add_var_slack_variable()
 
 #** ---------- Agregamos las restricciones del modelo ------------#
-model._add_power_s_constraint(branchstatus, ratio_line)
-model._add_power_p_constraint(branchstatus, ratio_trafo, g, b)
-#model._add_power_q_constraint(branchstatus, ratio_trafo, g, b)
-#model._add_p_balanced_constraint(branchstatus, genstatus, demandbidmap)
-#model._add_q_balanced_constraint(branchstatus, genstatus, demandbidmap)
+model._add_power_s_constraint(ratio_line)
+model._add_power_p_constraint(g, b)
+model._add_power_q_constraint(g, b)
+model._add_p_balanced_constraint(genstatus, demandbidmap)
+model._add_q_balanced_constraint(genstatus, demandbidmap)
 
 #** ------------- Agregamos la función objetivo ------------------#
 model._add_function_obj()
@@ -48,4 +47,4 @@ is_solve = model.solve_model()
 #** ----------------- Exportando las variables -------------------#
 if is_solve:
     path = r""
-    #model.save_model_variables(path)
+    model.save_model_variables(path)
