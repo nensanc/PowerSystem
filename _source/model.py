@@ -1,9 +1,6 @@
 import pyomo.environ as pyomo
 import numpy as np
 from pandas import DataFrame
-# import logging
-# # Configurar el nivel de registro
-# logging.basicConfig(level=logging.INFO)
 class CreateModel(object):
     '''
         Class encargada de crar el modelo de optimización
@@ -44,6 +41,14 @@ class CreateModel(object):
         self.model.bus = pyomo.Set(initialize=[bus for bus in self.system_param.get('bus')], doc='Buses')
         self.model.shunt = pyomo.Set(initialize=[sht for sht in range(2)], doc='Shunt')
         self.model.t = pyomo.Set(initialize=[t for t in range(1,25)], doc='Time')
+        # init variables  
+        self.dict_keys = {
+            'init_bus_theta':'Var_V_Theta','init_bus_v':'Var_V_Vbus',
+            'init_line_pij':'Var_V_LinePij','init_line_qij':'Var_V_LineQij',
+            'init_line_pji':'Var_V_LinePji','init_line_qji':'Var_V_LineQji',
+            'init_gen_p':'Var_V_Pgen','init_gen_q':'Var_V_Qgen',
+            'init_slack_p':'Var_V_Pslack','init_slack_q':'Var_V_Qslack'
+        }
     def _add_var_p_line(self):
         '''
             Está función crea la variable de potencia activa de las líneas P(i,j,c,t)
@@ -191,8 +196,9 @@ class CreateModel(object):
                 self.model.bus,
                 self.model.shunt,
                 self.model.t, 
-                within=pyomo.Boolean,
-                initialize=0,
+                bounds=(0.9, 1.1),
+                within=pyomo.Reals,
+                initialize=1.0,
                 doc='Shunt in nodo i con sht at time t'
             )
     def _add_var_slack_variable(self):
@@ -204,16 +210,6 @@ class CreateModel(object):
                 None
         '''
         if self.print_sec: print('Se agrega la variable Slack Variables')
-        # self.model.V_bc = pyomo.Var(
-        #         self.model.i,
-        #         bounds=(0,1),
-        #         within=pyomo.Reals,
-        #     )
-        # self.model.V_angle = pyomo.Var(
-        #         self.model.i,
-        #         self.model.t,
-        #         bounds=(0,2*np.pi),
-        #     )
         self.model.V_Gs = pyomo.Var(
                 self.model.bus,
                 bounds=(0,1),
@@ -221,14 +217,7 @@ class CreateModel(object):
             )
         self.model.V_Bs = pyomo.Var(
                 self.model.bus,
-                self.model.t,
-                bounds=(-1,1),
-                within=pyomo.Reals,
-            )
-        self.model.delta_Q = pyomo.Var(
-                self.model.bus,
-                self.model.t,
-                # bounds=(-1,1),
+                bounds=(0,1),
                 within=pyomo.Reals,
             )
         self.model.V_Rtrafo= pyomo.Var(
@@ -393,7 +382,7 @@ class CreateModel(object):
                                         self.model.t, 
                                         rule=balance_eqn_rule,
                                         doc='Active power balance')
-    def _add_q_balanced_constraint(self, genstatus, demandbidmap):
+    def _add_q_balanced_constraint(self, genstatus):
         '''
             Está función crea la restricción de balance de potencia reactiva
             input    
@@ -414,8 +403,8 @@ class CreateModel(object):
                     abs(
                         sum(model.V_LineQij[ij,t] for ij in self.system_param.get('branchij_bus').get(bus, {}))
                         + sum(model.V_LineQji[ji,t] for ji in self.system_param.get('branchji_bus').get(bus, {}))
-                        - model.V_Vbus[bus,t]**2
-                        #- model.V_Vbus[bus,t]**2*(sum(model.V_Shunt[bus, sht, t] for sht in self.model.shunt if self.system_param.get('bus_shunt').get(bus)))
+                        - model.V_Vbus[bus,t]**2 * model.V_Bs[bus] 
+                        - model.V_Vbus[bus,t]**2*(sum(model.V_Shunt[bus, sht, t] for sht in self.model.shunt if self.system_param.get('bus_shunt').get(bus)))
                         + self.adjust_values.get('adj_q_balance').get((bus,t))
                     )
                     )<=1e-8
@@ -435,12 +424,12 @@ class CreateModel(object):
         if self.print_sec: print('Se agrega la función objetivo')
         def obj_rule(model):
             return  (
-                    # sum((model.V_Shunt[bus, sht, t] - model.V_Shunt[bus, sht, t-1])**2
-                    #     for bus in model.bus
-                    #     for sht in self.model.shunt
-                    #     for t in model.t 
-                    #     if t >= 2 and self.system_param.get('bus_shunt').get(bus))
-                    + 1e8 * sum((model.V_Vbus[bus, t] - self.system_values.get('init_bus_v').get((bus, t)))**2
+                    + (1e+3)*sum((model.V_Shunt[bus, sht, t] - model.V_Shunt[bus, sht, t-1])**2
+                        for bus in model.bus
+                        for sht in self.model.shunt
+                        for t in model.t 
+                        if t >= 2 and self.system_param.get('bus_shunt').get(bus))
+                    + (1e+4) * sum((model.V_Vbus[bus, t] - self.system_values.get('init_bus_v').get((bus, t)))**2
                         for bus in model.bus
                         for t in model.t 
                         if self.system_values.get('init_bus_v').get((bus, t)))
@@ -464,7 +453,7 @@ class CreateModel(object):
         result = solver.solve(self.model)
         result.write()
         return True if result.solver.status.value=='ok' else False
-    def save_model_variables(self, path):
+    def save_model_variables(self):
         '''
             Está función guarda los datos del modelo de optimización
             input    
@@ -475,5 +464,13 @@ class CreateModel(object):
         variables = list(self.model.component_objects(pyomo.Var, active=True))
         if self.print_sec: print('Se guardan todas las variables...\n')
         for e in variables:
-            df = DataFrame(list(e.get_values().items()))
-            df.to_csv(f'Resultados/Var_{e.name}.csv', index=False)
+            df = DataFrame(list(e.get_values().items()), columns=['Var','Value'])
+            df.to_csv(f'Resultados/Var_{e.name}__res.csv', index=False)
+        for key, names in self.dict_keys.items():
+            dict_data = {
+                'Var':list(self.system_values.get(key).keys()),
+                'Value':list(self.system_values.get(key).values())
+            }
+            df = DataFrame(dict_data)
+            df.to_csv(f'Resultados/{names}__init.csv', index=False)
+                

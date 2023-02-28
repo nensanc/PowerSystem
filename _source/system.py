@@ -36,7 +36,7 @@ class GetVariablesSystem(object):
         self.scaling = {1:.63, 2:.62, 3:.6, 4:.58, 5:.59, 6:.65, 7:.72, 8:.85, 
                         9:.95, 10:.99, 11:1, 12:.99, 13:.93, 14:.92, 15:.9,16:.88, 
                         17:.9, 18:.9, 19:.96, 20:.98, 21:.96, 22:.9, 23:.8, 24:.7 }
-        self.multiplier = 0.5
+        self.multiplier = 1
         if self.print_sec: print(f'Se crea el objeto del sistema a trabajar * {system} *')
     def _get_param_from_system(self):
         '''
@@ -124,17 +124,17 @@ class GetVariablesSystem(object):
                         )
         init_line_pij, init_line_qij, init_line_pji, init_line_qji = {},{},{},{},
         init_slack_p, init_slack_q = {},{}
-        init_gen_p, init_gen_q, bound_gen_q = {},{},{}
+        init_gen_p, init_gen_q = {},{}
         Pd, Qd = {}, {}
         for t in range(1,25):
-            #self.system.gen.iloc[:,4] = self.system.gen.iloc[:,4]*self.scaling.get(t)*self.multiplier
+            self.system.gen.iloc[:,4] = self.system.gen.iloc[:,4]*self.scaling.get(t)*self.multiplier
             self.system.load.iloc[:,self.id_load_p] = self.system.load.iloc[:,self.id_load_p]*self.scaling.get(t)*self.multiplier
             self.system.load.iloc[:,self.id_load_q] = self.system.load.iloc[:,self.id_load_q]*self.scaling.get(t)*self.multiplier
             pp.runpp(self.system)
             for i in range(self.system.load.shape[0]):
                 row = self.system.load.iloc[i]
-                Pd[(str(row['bus']),t)] = row['p_mw']*self.scaling[t]/self.system.sn_mva
-                Qd[(str(row['bus']),t)] = row['q_mvar']*self.scaling[t]/self.system.sn_mva
+                Pd[(str(row['bus']),t)] = row['p_mw']/self.system.sn_mva
+                Qd[(str(row['bus']),t)] = row['q_mvar']/self.system.sn_mva
             for i in range(self.system.res_bus.shape[0]):
                 row = self.system.res_bus.iloc[i]
                 init_bus_v[(str(i), t)] = row['vm_pu']
@@ -152,7 +152,6 @@ class GetVariablesSystem(object):
                             list(self.system.res_gen['q_mvar']))):
                 init_gen_p[(str(c_gen), t)] = p/self.system.sn_mva
                 init_gen_q[(str(c_gen), t)] = q/self.system.sn_mva
-                bound_gen_q[(str(c_gen), t)] = (0.9*q, 1.1*q) if q>0 else (1.1*q, 0.9*q)
                 c_gen+=1
             c_gen=0
             for p, q in list(zip(list(self.system.res_ext_grid['p_mw']),
@@ -173,7 +172,6 @@ class GetVariablesSystem(object):
                 'init_gen_q': init_gen_q,
                 'init_slack_p': init_slack_p,
                 'init_slack_q': init_slack_q,
-                'bound_gen_q': bound_gen_q,
                 }
         return self.system_values
     def _get_conductance_susceptance(self):
