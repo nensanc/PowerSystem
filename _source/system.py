@@ -21,10 +21,6 @@ class GetVariablesSystem(object):
         self.bus_shunt = [1]
         if system=='ieee9':
             self.system = pp_net.case9()
-            self.system.bus.iloc[:, list(self.system.bus.columns).index('max_vm_pu')] = 1.1
-            self.system.bus.iloc[:, list(self.system.bus.columns).index('min_vm_pu')] = 0.9
-            self.id_load_p = list(self.system.load.columns).index('p_mw')
-            self.id_load_q = list(self.system.load.columns).index('q_mvar')
         elif system=='ieee118':
             self.system = pp_net.case118()
         else:
@@ -36,7 +32,13 @@ class GetVariablesSystem(object):
         self.scaling = {1:.63, 2:.62, 3:.6, 4:.58, 5:.59, 6:.65, 7:.72, 8:.85, 
                         9:.95, 10:.99, 11:1, 12:.99, 13:.93, 14:.92, 15:.9,16:.88, 
                         17:.9, 18:.9, 19:.96, 20:.98, 21:.96, 22:.9, 23:.8, 24:.7 }
-        self.multiplier = 1
+        self.multiplier = .75
+        self.sn_mva = self.system.sn_mva
+        self.system.bus.iloc[:, list(self.system.bus.columns).index('max_vm_pu')] = 1.1
+        self.system.bus.iloc[:, list(self.system.bus.columns).index('min_vm_pu')] = 0.9
+        self.id_load_p = list(self.system.load.columns).index('p_mw')
+        self.id_load_q = list(self.system.load.columns).index('q_mvar')
+        self.id_gen_p = list(self.system.gen.columns).index('p_mw')
         if self.print_sec: print(f'Se crea el objeto del sistema a trabajar * {system} *')
     def _get_param_from_system(self):
         '''
@@ -51,16 +53,16 @@ class GetVariablesSystem(object):
         for t in range(1,25):
             for i in range(self.system.gen.shape[0]):
                 row = self.system.gen.iloc[i]
-                gen_bound_p[(str(i), t)] = (row['min_p_mw']/self.system.sn_mva, 
-                                            row['max_p_mw']/self.system.sn_mva)
-                gen_bound_q[(str(i), t)] = (row['min_q_mvar']/self.system.sn_mva, 
-                                            row['max_q_mvar']/self.system.sn_mva)
+                gen_bound_p[(str(i), t)] = (row['min_p_mw']/self.sn_mva, 
+                                            row['max_p_mw']/self.sn_mva)
+                gen_bound_q[(str(i), t)] = (row['min_q_mvar']/self.sn_mva, 
+                                            row['max_q_mvar']/self.sn_mva)
             for i in range(self.system.ext_grid.shape[0]):
                 row = self.system.ext_grid.iloc[i]
-                slack_bound_p[(str(i), t)] = (row['min_p_mw']/self.system.sn_mva, 
-                                              row['max_p_mw']/self.system.sn_mva)
-                slack_bound_q[(str(i), t)] = (row['min_q_mvar']/self.system.sn_mva, 
-                                              row['max_q_mvar']/self.system.sn_mva)
+                slack_bound_p[(str(i), t)] = (row['min_p_mw']/self.sn_mva, 
+                                              row['max_p_mw']/self.sn_mva)
+                slack_bound_q[(str(i), t)] = (row['min_q_mvar']/self.sn_mva, 
+                                              row['max_q_mvar']/self.sn_mva)
             for bus in range(self.system.bus.shape[0]):
                 row = self.system.bus.iloc[bus]
                 bounds_bus[(str(bus), t)] = (row['min_vm_pu'], row['max_vm_pu'])
@@ -126,15 +128,19 @@ class GetVariablesSystem(object):
         init_slack_p, init_slack_q = {},{}
         init_gen_p, init_gen_q = {},{}
         Pd, Qd = {}, {}
+        load_init_p = list(self.system.load.iloc[:,self.id_load_p])
+        load_init_q = list(self.system.load.iloc[:,self.id_load_q])
+        gen_init_q = list(self.system.gen.iloc[:,self.id_gen_p])
         for t in range(1,25):
-            self.system.gen.iloc[:,4] = self.system.gen.iloc[:,4]*self.scaling.get(t)*self.multiplier
-            self.system.load.iloc[:,self.id_load_p] = self.system.load.iloc[:,self.id_load_p]*self.scaling.get(t)*self.multiplier
-            self.system.load.iloc[:,self.id_load_q] = self.system.load.iloc[:,self.id_load_q]*self.scaling.get(t)*self.multiplier
+            self.system.gen.iloc[:,self.id_gen_p] = list(np.array(gen_init_q)*self.scaling.get(t)*self.multiplier)
+            self.system.load.iloc[:,self.id_load_p] = list(np.array(load_init_p)*self.scaling.get(t)*self.multiplier)
+            self.system.load.iloc[:,self.id_load_q] = list(np.array(load_init_q)*self.scaling.get(t)*self.multiplier)
             pp.runpp(self.system)
-            for i in range(self.system.load.shape[0]):
+            for i in range(self.system.res_load.shape[0]):
                 row = self.system.load.iloc[i]
-                Pd[(str(row['bus']),t)] = row['p_mw']/self.system.sn_mva
-                Qd[(str(row['bus']),t)] = row['q_mvar']/self.system.sn_mva
+                res_row = self.system.res_load.iloc[i]
+                Pd[(str(row['bus']),t)] = res_row['p_mw']/self.sn_mva
+                Qd[(str(row['bus']),t)] = res_row['q_mvar']/self.sn_mva
             for i in range(self.system.res_bus.shape[0]):
                 row = self.system.res_bus.iloc[i]
                 init_bus_v[(str(i), t)] = row['vm_pu']
@@ -142,22 +148,22 @@ class GetVariablesSystem(object):
             c_line = 0
             for i,j in buses_line:
                 row = self.system.res_line.iloc[c_line]
-                init_line_pij[f'{i}-{j}',t] = row['p_from_mw']/self.system.sn_mva
-                init_line_pji[f'{j}-{i}',t] = row['p_to_mw']/self.system.sn_mva
-                init_line_qij[f'{i}-{j}',t] = row['q_from_mvar']/self.system.sn_mva
-                init_line_qji[f'{j}-{i}',t] = row['q_to_mvar']/self.system.sn_mva
+                init_line_pij[f'{i}-{j}',t] = row['p_from_mw']/self.sn_mva
+                init_line_pji[f'{j}-{i}',t] = row['p_to_mw']/self.sn_mva
+                init_line_qij[f'{i}-{j}',t] = row['q_from_mvar']/self.sn_mva
+                init_line_qji[f'{j}-{i}',t] = row['q_to_mvar']/self.sn_mva
                 c_line+=1
             c_gen = 0
             for p, q in list(zip(list(self.system.res_gen['p_mw']),
                             list(self.system.res_gen['q_mvar']))):
-                init_gen_p[(str(c_gen), t)] = p/self.system.sn_mva
-                init_gen_q[(str(c_gen), t)] = q/self.system.sn_mva
+                init_gen_p[(str(c_gen), t)] = p/self.sn_mva
+                init_gen_q[(str(c_gen), t)] = q/self.sn_mva
                 c_gen+=1
             c_gen=0
             for p, q in list(zip(list(self.system.res_ext_grid['p_mw']),
                             list(self.system.res_ext_grid['q_mvar']))):
-                init_slack_p[(str(c_gen), t)] = p/self.system.sn_mva
-                init_slack_q[(str(c_gen), t)] = q/self.system.sn_mva
+                init_slack_p[(str(c_gen), t)] = p/self.sn_mva
+                init_slack_q[(str(c_gen), t)] = q/self.sn_mva
                 c_gen+=1
         self.system_values = {
                 'Pd': Pd,
@@ -221,7 +227,7 @@ class GetVariablesSystem(object):
             row = self.system.line.iloc[c]
             i, j = row['from_bus'], row['to_bus']
             self.ratio_line[f'{i}-{j}']\
-                = np.sqrt(3)*row['max_i_ka']*self.voltage.get(int(row['from_bus']))/self.system.sn_mva
+                = np.sqrt(3)*row['max_i_ka']*self.voltage.get(int(row['from_bus']))/self.sn_mva
         return self.ratio_line
     def _get_ratio_trafo(self):
         '''
