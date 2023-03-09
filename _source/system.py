@@ -17,12 +17,20 @@ class GetVariablesSystem(object):
         '''
         self.print_sec = print_sec
         self.model_name = f'--- Model -> {system} ---'
+        self.system_name = system
         self.areas = [1,2,3]
-        self.bus_shunt = [1]
-        if system=='ieee9':
+        if self.system_name=='ieee9':
             self.system = pp_net.case9()
-        elif system=='ieee118':
+            self.bus_shunt = [6,8,4]
+        elif self.system_name=='ieee39':
+            self.system = pp_net.case39()
+            self.bus_shunt = [14,2,22,25]
+        elif self.system_name=='ieee57':
+            self.system = pp_net.case57()
+            self.bus_shunt = [22,34,24,52,29,30]
+        elif self.system_name=='ieee118':
             self.system = pp_net.case118()
+            self.bus_shunt = [51,50,21,56,78]
         else:
             self.system = None
         self.voltage = dict(
@@ -32,7 +40,7 @@ class GetVariablesSystem(object):
         self.scaling = {1:.63, 2:.62, 3:.6, 4:.58, 5:.59, 6:.65, 7:.72, 8:.85, 
                         9:.95, 10:.99, 11:1, 12:.99, 13:.93, 14:.92, 15:.9,16:.88, 
                         17:.9, 18:.9, 19:.96, 20:.98, 21:.96, 22:.9, 23:.8, 24:.7 }
-        self.multiplier = .75
+        self.multiplier = 1
         self.sn_mva = self.system.sn_mva
         self.system.bus.iloc[:, list(self.system.bus.columns).index('max_vm_pu')] = 1.1
         self.system.bus.iloc[:, list(self.system.bus.columns).index('min_vm_pu')] = 0.9
@@ -105,6 +113,7 @@ class GetVariablesSystem(object):
                 'slack_bound_p': slack_bound_p,
                 'slack_bound_q': slack_bound_q,
                 'model_name': self.model_name,
+                'system_name': self.system_name,
                 'bus_shunt': dict((str(bus), True) for bus in self.bus_shunt)
             }
         return self.system_param
@@ -296,20 +305,20 @@ class GetVariablesSystem(object):
                 # para Pij
                 p_v1 = self.system_values.get('init_line_pij').get((ij,t))
                 p_v2 = (
-                    (self.g[ij] * (self.system_values.get('init_bus_v')[ij[0],t]**2) / 1**2)
-                    - (self.system_values.get('init_bus_v')[ij[0],t] * self.system_values.get('init_bus_v')[ij[2],t] / 1)
-                    * (self.g[ij] * np.cos(self.system_values.get('init_bus_theta')[ij[0],t] - self.system_values.get('init_bus_theta')[ij[2],t]) 
-                    + self.b[ij] * np.sin(self.system_values.get('init_bus_theta')[ij[0],t] - self.system_values.get('init_bus_theta')[ij[2],t]))
+                    (self.g[ij] * (self.system_values.get('init_bus_v')[ij.split('-')[0],t]**2) / 1**2)
+                    - (self.system_values.get('init_bus_v')[ij.split('-')[0],t] * self.system_values.get('init_bus_v')[ij.split('-')[1],t] / 1)
+                    * (self.g[ij] * np.cos(self.system_values.get('init_bus_theta')[ij.split('-')[0],t] - self.system_values.get('init_bus_theta')[ij.split('-')[1],t]) 
+                    + self.b[ij] * np.sin(self.system_values.get('init_bus_theta')[ij.split('-')[0],t] - self.system_values.get('init_bus_theta')[ij.split('-')[1],t]))
                     )
                 signo_pij = -1 if (p_v1>0 and p_v2<0 or p_v1<0 and p_v2>0) else 1
                 adj_line_pij[(ij,t)] = abs(p_v2/p_v1)*signo_pij
                 # para Qij
                 q_v1 = self.system_values.get('init_line_qij').get((ij,t))
                 q_v2 = (
-                    -self.system_values.get('init_bus_v')[ij[0],t]**2 * (self.b[ij]) / 1**2
-                    - self.system_values.get('init_bus_v')[ij[0],t] * self.system_values.get('init_bus_v')[ij[2],t] /1 
-                    * (self.g[ij] * np.sin(self.system_values.get('init_bus_theta')[ij[0],t] - self.system_values.get('init_bus_theta')[ij[2],t])
-                    - self.b[ij] * np.cos(self.system_values.get('init_bus_theta')[ij[0],t] - self.system_values.get('init_bus_theta')[ij[2],t]))
+                    -self.system_values.get('init_bus_v')[ij.split('-')[0],t]**2 * (self.b[ij]) / 1**2
+                    - self.system_values.get('init_bus_v')[ij.split('-')[0],t] * self.system_values.get('init_bus_v')[ij.split('-')[1],t] /1 
+                    * (self.g[ij] * np.sin(self.system_values.get('init_bus_theta')[ij.split('-')[0],t] - self.system_values.get('init_bus_theta')[ij.split('-')[1],t])
+                    - self.b[ij] * np.cos(self.system_values.get('init_bus_theta')[ij.split('-')[0],t] - self.system_values.get('init_bus_theta')[ij.split('-')[1],t]))
                     )
                 signo_qij = -1 if (q_v1>0 and q_v2<0 or q_v1<0 and q_v2>0) else 1
                 adj_line_qij[(ij,t)] = abs(q_v2/q_v1)*signo_qij
@@ -317,20 +326,20 @@ class GetVariablesSystem(object):
                 # para Pji
                 p_v1 = self.system_values.get('init_line_pji').get((ji,t))
                 p_v2 = (
-                    (self.g[ji] * (self.system_values.get('init_bus_v')[ji[0],t]**2) / 1**2)
-                    - (self.system_values.get('init_bus_v')[ji[0],t] * self.system_values.get('init_bus_v')[ji[2],t] / 1)
-                    * (self.g[ji] * np.cos(self.system_values.get('init_bus_theta')[ji[0],t] - self.system_values.get('init_bus_theta')[ji[2],t]) 
-                    + self.b[ji] * np.sin(self.system_values.get('init_bus_theta')[ji[0],t] - self.system_values.get('init_bus_theta')[ji[2],t]))
+                    (self.g[ji] * (self.system_values.get('init_bus_v')[ji.split('-')[0],t]**2) / 1**2)
+                    - (self.system_values.get('init_bus_v')[ji[0],t] * self.system_values.get('init_bus_v')[ji.split('-')[1],t] / 1)
+                    * (self.g[ji] * np.cos(self.system_values.get('init_bus_theta')[ji.split('-')[0],t] - self.system_values.get('init_bus_theta')[ji.split('-')[1],t]) 
+                    + self.b[ji] * np.sin(self.system_values.get('init_bus_theta')[ji.split('-')[0],t] - self.system_values.get('init_bus_theta')[ji.split('-')[1],t]))
                     )
                 signo_pji = -1 if (p_v1>0 and p_v2<0 or p_v1<0 and p_v2>0) else 1
                 adj_line_pji[(ji,t)] = abs(p_v2/p_v1)*signo_pji
                 # para Qji
                 q_v1 = self.system_values.get('init_line_qji').get((ji,t))
                 q_v2 = (
-                    -self.system_values.get('init_bus_v')[ji[2],t]**2 * (self.b[ji])
-                    - self.system_values.get('init_bus_v')[ji[0],t] * self.system_values.get('init_bus_v')[ji[2],t] / 1
-                    * (self.g[ji] * np.sin(self.system_values.get('init_bus_theta')[ji[2],t] - self.system_values.get('init_bus_theta')[ji[0],t])
-                    - self.b[ji] * np.cos(self.system_values.get('init_bus_theta')[ji[2],t] - self.system_values.get('init_bus_theta')[ji[0],t]))
+                    -self.system_values.get('init_bus_v')[ji.split('-')[1],t]**2 * (self.b[ji])
+                    - self.system_values.get('init_bus_v')[ji.split('-')[0],t] * self.system_values.get('init_bus_v')[ji.split('-')[1],t] / 1
+                    * (self.g[ji] * np.sin(self.system_values.get('init_bus_theta')[ji.split('-')[1],t] - self.system_values.get('init_bus_theta')[ji.split('-')[0],t])
+                    - self.b[ji] * np.cos(self.system_values.get('init_bus_theta')[ji.split('-')[1],t] - self.system_values.get('init_bus_theta')[ji.split('-')[0],t]))
                     )
                 signo_qji = -1 if (q_v1>0 and q_v2<0 or q_v1<0 and q_v2>0) else 1
                 adj_line_qji[(ji,t)] = abs(q_v2/q_v1)*signo_qji

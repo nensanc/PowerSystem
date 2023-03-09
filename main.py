@@ -4,7 +4,7 @@ from _source.system import GetVariablesSystem
 print('\n***Inicia el script***\n')
 
 #** istanciamos la clase para obtener las variables del sistema
-system = GetVariablesSystem('ieee9', print_sec=False)
+system = GetVariablesSystem('ieee57', print_sec=False)
 
 #** ------------ Creamos las variables del sistema ---------------#
 system_param = system._get_param_from_system()
