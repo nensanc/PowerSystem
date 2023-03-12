@@ -1,10 +1,9 @@
 from _source.model import CreateModel
 from _source.system import GetVariablesSystem
-
 print('\n***Inicia el script***\n')
 
 #** istanciamos la clase para obtener las variables del sistema
-system = GetVariablesSystem('ieee57', print_sec=False)
+system = GetVariablesSystem('ieee39', multi_area=False, print_sec=False)
 
 #** ------------ Creamos las variables del sistema ---------------#
 system_param = system._get_param_from_system()
@@ -45,5 +44,4 @@ model._add_function_obj()
 is_solve = model.solve_model()
 
 #** ----------------- Exportando las variables -------------------#
-if is_solve:
-    model.save_model_variables()
+if is_solve: model.save_model_variables()

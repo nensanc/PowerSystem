@@ -1,4 +1,5 @@
 import pandapower.networks as pp_net
+from pandapower.grid_equivalents import get_equivalent
 import pandapower as pp
 import numpy as np
 
@@ -6,31 +7,47 @@ class GetVariablesSystem(object):
     '''
         Class encargada de obtener las ecuaciones del flujo de carga
     '''
-    def __init__(self, system, print_sec=False):
+    def __init__(self, system, multi_area=False, print_sec=False):
         '''
             Está función instancia la clase system, para obtener los parámetros y variables del sistema\n
             input\n
-                system: nombre del sistema en pandapower ieee57 o ieee118
+                system: nombre del sistema en pandapower ieee9, ieee39, ieee57 o ieee118
+                multi_area: bandera para realizar separación multiarea
                 print_sec: para imprimir secuencia de ejecuciones
             return\n
                 Objeto de tipo system
         '''
         self.print_sec = print_sec
+        self.multi_area = multi_area
         self.model_name = f'--- Model -> {system} ---'
         self.system_name = system
         self.areas = [1,2,3]
         if self.system_name=='ieee9':
             self.system = pp_net.case9()
             self.bus_shunt = [6,8,4]
+            self.pilot_nodes = [i for i in range(9)]
+            self.sep_areas = {
+                1:{
+                'border_node':[4, 8],
+                'internal_node':[0]
+                },
+                2:{
+                'border_node':[4, 8],
+                'internal_node':[6]
+                }
+            }
         elif self.system_name=='ieee39':
             self.system = pp_net.case39()
             self.bus_shunt = [14,2,22,25]
+            self.pilot_nodes = [1,25,7,5,22,18]
         elif self.system_name=='ieee57':
             self.system = pp_net.case57()
             self.bus_shunt = [22,34,24,52,29,30]
+            self.pilot_nodes = [0,3,9,11,12,21,28,30,35,40,47]
         elif self.system_name=='ieee118':
             self.system = pp_net.case118()
             self.bus_shunt = [51,50,21,56,78]
+            self.pilot_nodes = [68,4,36,55,76,65,45,22,11,69,16,62,79,7,48,31]
         else:
             self.system = None
         self.voltage = dict(
@@ -80,9 +97,10 @@ class GetVariablesSystem(object):
         atBusSlack = {}
         for gen,bus in enumerate(list(self.system.ext_grid['bus'])):
             atBusSlack[(str(gen),bus)] = True
-        ij, ji, branchij_bus, branchji_bus = [],[],{},{}
+        list_i,ij, ji, branchij_bus, branchji_bus = [],[],[],{},{}
         for i, j in list(zip(list(self.system.line['from_bus']),
                             list(self.system.line['to_bus']))):
+            if not i in list_i: list_i.append(str(i))
             ij.append(f'{i}-{j}') 
             ji.append(f'{j}-{i}')
             if branchij_bus.get(str(i)):
@@ -93,15 +111,22 @@ class GetVariablesSystem(object):
                 branchji_bus[str(j)].append(f'{j}-{i}')
             else:
                 branchji_bus[str(j)] = [f'{j}-{i}']
-        
+        bus_trafo = {}
+        if (self.system.trafo['hv_bus'].shape[0]):
+            for bus in list(self.system.trafo['hv_bus']):
+                bus_trafo[str(bus)] = True
+        else:
+            for bus in list(self.system.bus.index.values):
+                bus_trafo[str(bus)] = True
         self.system_param = {
                 'ij':ij,
                 'ji':ji,
                 'a':self.areas,
-                'i': [str(i) for i in list(self.system.line['from_bus'])],
+                'i': list_i,
                 'branchij_bus': branchij_bus,
                 'branchji_bus': branchji_bus,
                 'bus': [str(bus) for bus in list(self.system.bus.index.values)],
+                'bus_trafo': bus_trafo,
                 'bounds_bus':bounds_bus,
                 'atBus': atBus,
                 'atBusSlack': atBusSlack,
@@ -113,8 +138,10 @@ class GetVariablesSystem(object):
                 'slack_bound_p': slack_bound_p,
                 'slack_bound_q': slack_bound_q,
                 'model_name': self.model_name,
+                'multi_area': self.multi_area,
                 'system_name': self.system_name,
-                'bus_shunt': dict((str(bus), True) for bus in self.bus_shunt)
+                'bus_shunt': dict((str(bus), True) for bus in self.bus_shunt),
+                'pilot_nodes': dict((str(node), True) for node in self.pilot_nodes),
             }
         return self.system_param
     def _get_values_from_system(self):
@@ -137,6 +164,7 @@ class GetVariablesSystem(object):
         init_slack_p, init_slack_q = {},{}
         init_gen_p, init_gen_q = {},{}
         Pd, Qd = {}, {}
+        ward_borders_p, ward_borders_q = {},{}
         load_init_p = list(self.system.load.iloc[:,self.id_load_p])
         load_init_q = list(self.system.load.iloc[:,self.id_load_q])
         gen_init_q = list(self.system.gen.iloc[:,self.id_gen_p])
@@ -174,6 +202,17 @@ class GetVariablesSystem(object):
                 init_slack_p[(str(c_gen), t)] = p/self.sn_mva
                 init_slack_q[(str(c_gen), t)] = q/self.sn_mva
                 c_gen+=1
+            if (self.multi_area):
+                for area_info in self.sep_areas.values():
+                    net_eq = get_equivalent(self.system, 'ward', 
+                                            area_info.get('border_node'), 
+                                            area_info.get('internal_node'))
+                    for i in range(net_eq.ward.shape[0]):
+                        row = net_eq.ward.iloc[i]
+                        res_row = net_eq.res_ward.iloc[i]
+                        if (int(row['bus']) in area_info.get('border_node')):
+                            ward_borders_p[(str(row['bus']), t)] = res_row['p_mw']
+                            ward_borders_q[(str(row['bus']), t)] = res_row['q_mvar']
         self.system_values = {
                 'Pd': Pd,
                 'Qd': Qd,
@@ -187,6 +226,8 @@ class GetVariablesSystem(object):
                 'init_gen_q': init_gen_q,
                 'init_slack_p': init_slack_p,
                 'init_slack_q': init_slack_q,
+                'ward_borders_p': ward_borders_p,
+                'ward_borders_q': ward_borders_q
                 }
         return self.system_values
     def _get_conductance_susceptance(self):

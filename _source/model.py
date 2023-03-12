@@ -1,5 +1,4 @@
 import pyomo.environ as pyomo
-import numpy as np
 from pandas import DataFrame
 class CreateModel(object):
     '''
@@ -31,8 +30,12 @@ class CreateModel(object):
         if self.print_sec: print('Se crea el objeto del modelo de optimización y los Sets')
         self.model = pyomo.ConcreteModel()
         self.error = 1e-6
+        self.min_trafo = 0.1
+        self.m_trafo = 1
+        self.max_trafo = 1.9
         self.model.name = self.system_param.get('model_name')
         self.model.i = pyomo.Set(initialize=[i for i in self.system_param.get('i')], doc='Terminal i')
+        self.model.trafo = pyomo.Set(initialize=[bus for bus in self.system_param.get('bus_trafo')], doc='Bus trafo')
         self.model.ij = pyomo.Set(initialize=[ij for ij in self.system_param.get('ij')], doc='Terminal ij')
         self.model.ji = pyomo.Set(initialize=[ji for ji in self.system_param.get('ji')], doc='Terminal ji')
         self.model.a = pyomo.Set(initialize=[a for a in self.system_param.get('a')], doc='áreas')
@@ -221,10 +224,10 @@ class CreateModel(object):
                 within=pyomo.Reals,
             )
         self.model.V_Rtrafo= pyomo.Var(
-                self.model.i,
+                self.model.trafo,
                 self.model.t,
-                bounds=(0.9,1.1),
-                initialize = 1.0,
+                bounds=(self.min_trafo,self.max_trafo),
+                initialize = self.m_trafo,
                 within=pyomo.Reals,
             )
     def _add_var_pd_elastic(self):
@@ -284,8 +287,10 @@ class CreateModel(object):
         if self.print_sec: print('Se agrega la restricción de potencia activa')
         def line_constraint_ij(model, ij, t):
             return (
-                    (g[ij] * (model.V_Vbus[ij.split('-')[0],t]**2) / model.V_Rtrafo[ij.split('-')[0],t]**2)
-                    - (model.V_Vbus[ij[0],t] * model.V_Vbus[ij.split('-')[1],t] / model.V_Rtrafo[ij.split('-')[0],t])
+                    (g[ij] * (model.V_Vbus[ij.split('-')[0],t]**2) 
+                     / (model.V_Rtrafo[ij.split('-')[0],t] if self.system_param.get('bus_trafo').get(ij.split('-')[0]) else 1)**2)
+                    - (model.V_Vbus[ij[0],t] * model.V_Vbus[ij.split('-')[1],t] 
+                       / (model.V_Rtrafo[ij.split('-')[0],t] if self.system_param.get('bus_trafo').get(ij.split('-')[0]) else 1))
                     * (g[ij] * pyomo.cos(model.V_Theta[ij.split('-')[0],t] - model.V_Theta[ij.split('-')[1],t]) 
                     + b[ij] * pyomo.sin(model.V_Theta[ij.split('-')[0],t] - model.V_Theta[ij.split('-')[1],t]))
                     ==
@@ -301,7 +306,8 @@ class CreateModel(object):
         def line_constraint_ji(model, ji, t):
             return (
                     g[ji] * model.V_Vbus[ji.split('-')[1],t]**2
-                    - (model.V_Vbus[ji.split('-')[0],t] * model.V_Vbus[ji.split('-')[1],t] / model.V_Rtrafo[ji.split('-')[1],t])
+                    - (model.V_Vbus[ji.split('-')[0],t] * model.V_Vbus[ji.split('-')[1],t] 
+                       / (model.V_Rtrafo[ji.split('-')[1],t]) if self.system_param.get('bus_trafo').get(ji.split('-')[1]) else 1)
                     * (g[ji] * pyomo.cos(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t]) 
                     + b[ji] * pyomo.sin(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t]))
                     ==
@@ -327,8 +333,10 @@ class CreateModel(object):
         if self.print_sec: print('Se agrega la restricción de potencia reactiva')
         def line_constraint_ij(model, ij, t):
             return (
-                        - model.V_Vbus[ij.split('-')[0],t]**2 * (b[ij]) / model.V_Rtrafo[ij.split('-')[0],t]**2
-                        - model.V_Vbus[ij.split('-')[0],t] * model.V_Vbus[ij.split('-')[1],t] / model.V_Rtrafo[ij.split('-')[0],t] 
+                        - model.V_Vbus[ij.split('-')[0],t]**2 * (b[ij]) 
+                        / (model.V_Rtrafo[ij.split('-')[0],t] if self.system_param.get('bus_trafo').get(ij.split('-')[0]) else 1)**2
+                        - model.V_Vbus[ij.split('-')[0],t] * model.V_Vbus[ij.split('-')[1],t] 
+                        / (model.V_Rtrafo[ij.split('-')[0],t] if self.system_param.get('bus_trafo').get(ij.split('-')[0]) else 1) 
                         * (g[ij] * pyomo.sin(model.V_Theta[ij.split('-')[0],t] - model.V_Theta[ij.split('-')[1],t])
                         - b[ij] * pyomo.cos(model.V_Theta[ij.split('-')[0],t] - model.V_Theta[ij.split('-')[1],t]))
                     ==
@@ -343,7 +351,8 @@ class CreateModel(object):
         def line_constraint_ji(model, ji, t):
             return (
                         - model.V_Vbus[ji.split('-')[1],t]**2 * (b[ji])
-                        - model.V_Vbus[ji.split('-')[0],t] * model.V_Vbus[ji.split('-')[1],t] / model.V_Rtrafo[ji.split('-')[1],t]
+                        - model.V_Vbus[ji.split('-')[0],t] * model.V_Vbus[ji.split('-')[1],t] 
+                        / (model.V_Rtrafo[ji.split('-')[1],t] if self.system_param.get('bus_trafo').get(ji.split('-')[1]) else 1)
                         * (g[ji] * pyomo.sin(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t])
                         - b[ji] * pyomo.cos(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji[0],t]))
                     ==
@@ -419,7 +428,7 @@ class CreateModel(object):
         '''
         if self.print_sec: print('Se agrega la función objetivo')
         def obj_rule(model):
-            return  (
+            return  (   
                     + (k1)*sum((model.V_Shunt[bus, t] - model.V_Shunt[bus, t-1])**2
                         for bus in model.bus
                         for t in model.t 
@@ -427,15 +436,15 @@ class CreateModel(object):
                     + (k2) * sum((model.V_Vbus[bus, t] - self.system_values.get('init_bus_v').get((bus, t)))**2
                         for bus in model.bus
                         for t in model.t
-                        if self.system_values.get('init_bus_v').get((bus, t)))
+                        if self.system_param.get('pilot_nodes').get(bus))
                     + (k3)*sum(model.V_Qgen[gen, t]**2 
                         for gen in model.gen
                         for t in model.t)
                 )
         if (self.system_param.get('system_name')=='ieee9'):
-            k1, k2, k3 = 1e-4, 1e+8, 1e-32
+            k1, k2, k3 = 1e-4, 1e+12, 1e-12
         elif (self.system_param.get('system_name')=='ieee39'):
-            k1, k2, k3 = 1e-4, 1e+4, 1e-32
+            k1, k2, k3 = 1e-4, 1e+12, 1e-12
         elif (self.system_param.get('system_name')=='ieee57'):
             k1, k2, k3 = 1e-4, 1e+4, 1e-32
         elif (self.system_param.get('system_name')=='ieee118'):
