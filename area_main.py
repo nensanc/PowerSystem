@@ -15,8 +15,6 @@ g, b = system._get_conductance_susceptance()
 demandbidmap = system._get_demandbidmap()   
 adjust_values = system._get_adjust_values()
 
-print(system_values.get('ward_borders_q'))
-
 #** instanciamos la clase para el modelo de optimización
 model = CreateModel(system_param, system_values, adjust_values, print_sec=True)
 

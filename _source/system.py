@@ -26,16 +26,12 @@ class GetVariablesSystem(object):
             self.system = pp_net.case9()
             self.bus_shunt = [6,8,4]
             self.pilot_nodes = [i for i in range(9)]
-            self.sep_areas = {
-                1:{
-                'border_node':[4, 8],
-                'internal_node':[0]
-                },
-                2:{
-                'border_node':[4, 8],
-                'internal_node':[6]
-                }
-            }
+            self.sep_areas = [  {
+                                    'name':'A1','border_node':[4, 8],'internal_node':[0]
+                                },{
+                                    'name':'A2','border_node':[4, 8],'internal_node':[5]
+                                }
+                            ]
         elif self.system_name=='ieee39':
             self.system = pp_net.case39()
             self.bus_shunt = [14,2,22,25]
@@ -57,7 +53,7 @@ class GetVariablesSystem(object):
         self.scaling = {1:.63, 2:.62, 3:.6, 4:.58, 5:.59, 6:.65, 7:.72, 8:.85, 
                         9:.95, 10:.99, 11:1, 12:.99, 13:.93, 14:.92, 15:.9,16:.88, 
                         17:.9, 18:.9, 19:.96, 20:.98, 21:.96, 22:.9, 23:.8, 24:.7 }
-        self.multiplier = 1
+        self.multiplier = 0.75
         self.sn_mva = self.system.sn_mva
         self.system.bus.iloc[:, list(self.system.bus.columns).index('max_vm_pu')] = 1.1
         self.system.bus.iloc[:, list(self.system.bus.columns).index('min_vm_pu')] = 0.9
@@ -74,14 +70,18 @@ class GetVariablesSystem(object):
                 dict: diccionario que contiene los parámetros del sistema, i, j , c, buses, bounds. 
         '''
         if self.print_sec: print('Se obtienen la variables del sistema')
-        gen_bound_p, gen_bound_q, slack_bound_p, slack_bound_q, bounds_bus = {}, {}, {}, {}, {}
+        if (self.multi_area):
+            nodos_multiarea = dict((area.name,[]) for area in self.sep_areas)
+            for area_info in self.sep_areas:
+                net_eq = get_equivalent(self.system, 'ward', 
+                                        area_info.get('border_node'), 
+                                        area_info.get('internal_node'))
+                for i in range(net_eq.ward.shape[0]):
+                    row = net_eq.ward.iloc[i]
+                    if nodos_multiarea.get(area_info.get('name')):
+                        nodos_multiarea.get(area_info.get('name')).append(row['bus'])
+        slack_bound_p, slack_bound_q, bounds_bus = {}, {}, {}
         for t in range(1,25):
-            for i in range(self.system.gen.shape[0]):
-                row = self.system.gen.iloc[i]
-                gen_bound_p[(str(i), t)] = (row['min_p_mw']/self.sn_mva, 
-                                            row['max_p_mw']/self.sn_mva)
-                gen_bound_q[(str(i), t)] = (row['min_q_mvar']/self.sn_mva, 
-                                            row['max_q_mvar']/self.sn_mva)
             for i in range(self.system.ext_grid.shape[0]):
                 row = self.system.ext_grid.iloc[i]
                 slack_bound_p[(str(i), t)] = (row['min_p_mw']/self.sn_mva, 
@@ -100,7 +100,8 @@ class GetVariablesSystem(object):
         list_i,ij, ji, branchij_bus, branchji_bus = [],[],[],{},{}
         for i, j in list(zip(list(self.system.line['from_bus']),
                             list(self.system.line['to_bus']))):
-            if not i in list_i: list_i.append(str(i))
+            if not str(i) in list_i: 
+                list_i.append(str(i))
             ij.append(f'{i}-{j}') 
             ji.append(f'{j}-{i}')
             if branchij_bus.get(str(i)):
@@ -112,12 +113,8 @@ class GetVariablesSystem(object):
             else:
                 branchji_bus[str(j)] = [f'{j}-{i}']
         bus_trafo = {}
-        if (self.system.trafo['hv_bus'].shape[0]):
-            for bus in list(self.system.trafo['hv_bus']):
-                bus_trafo[str(bus)] = True
-        else:
-            for bus in list(self.system.bus.index.values):
-                bus_trafo[str(bus)] = True
+        for bus in list(self.system.bus.index.values):
+            bus_trafo[str(bus)] = True
         self.system_param = {
                 'ij':ij,
                 'ji':ji,
@@ -133,8 +130,6 @@ class GetVariablesSystem(object):
                 'demandbid': [str(bus) for bus in list(self.system.load.index.values)],
                 'gen':[str(gen) for gen in list(self.system.gen.index.values)],
                 'slack':[str(gen) for gen in list(self.system.ext_grid.index.values)],
-                'gen_bound_p': gen_bound_p,
-                'gen_bound_q': gen_bound_q,
                 'slack_bound_p': slack_bound_p,
                 'slack_bound_q': slack_bound_q,
                 'model_name': self.model_name,
@@ -160,9 +155,10 @@ class GetVariablesSystem(object):
                             list(self.system.line['to_bus'])
                             )
                         )
-        init_line_pij, init_line_qij, init_line_pji, init_line_qji = {},{},{},{},
+        init_line_pij, init_line_qij, init_line_pji, init_line_qji = {},{},{},{}
+        bound_line_pij, bound_line_pji = {}, {} 
         init_slack_p, init_slack_q = {},{}
-        init_gen_p, init_gen_q = {},{}
+        init_gen_p, init_gen_q, gen_bound_q = {},{},{}
         Pd, Qd = {}, {}
         ward_borders_p, ward_borders_q = {},{}
         load_init_p = list(self.system.load.iloc[:,self.id_load_p])
@@ -185,16 +181,25 @@ class GetVariablesSystem(object):
             c_line = 0
             for i,j in buses_line:
                 row = self.system.res_line.iloc[c_line]
-                init_line_pij[f'{i}-{j}',t] = row['p_from_mw']/self.sn_mva
-                init_line_pji[f'{j}-{i}',t] = row['p_to_mw']/self.sn_mva
-                init_line_qij[f'{i}-{j}',t] = row['q_from_mvar']/self.sn_mva
-                init_line_qji[f'{j}-{i}',t] = row['q_to_mvar']/self.sn_mva
+                p_from = row['p_from_mw']/self.sn_mva
+                p_to = row['p_to_mw']/self.sn_mva
+                init_line_pij[(f'{i}-{j}',t)] = p_from
+                init_line_pji[(f'{j}-{i}',t)] = p_to
+                bound_line_pij[(f'{i}-{j}',t)] = (0.9*p_from, 1.1*p_from) if p_from>0 else (1.1*p_from, 0.9*p_from)
+                bound_line_pji[(f'{j}-{i}',t)] = (0.9*p_to, 1.1*p_to) if p_to>0 else (1.1*p_to, 0.9*p_to)
+                init_line_qij[(f'{i}-{j}',t)] = row['q_from_mvar']/self.sn_mva
+                init_line_qji[(f'{j}-{i}',t)] = row['q_to_mvar']/self.sn_mva
                 c_line+=1
             c_gen = 0
             for p, q in list(zip(list(self.system.res_gen['p_mw']),
                             list(self.system.res_gen['q_mvar']))):
                 init_gen_p[(str(c_gen), t)] = p/self.sn_mva
                 init_gen_q[(str(c_gen), t)] = q/self.sn_mva
+                row = self.system.gen.iloc[c_gen]
+                min_q = row['min_q_mvar'] if row['min_q_mvar']<q else q
+                max_q = row['max_q_mvar'] if row['max_q_mvar']>q else q
+                gen_bound_q[(str(c_gen), t)] = (min_q/self.sn_mva, 
+                                            max_q/self.sn_mva)
                 c_gen+=1
             c_gen=0
             for p, q in list(zip(list(self.system.res_ext_grid['p_mw']),
@@ -203,7 +208,7 @@ class GetVariablesSystem(object):
                 init_slack_q[(str(c_gen), t)] = q/self.sn_mva
                 c_gen+=1
             if (self.multi_area):
-                for area_info in self.sep_areas.values():
+                for area_info in self.sep_areas:
                     net_eq = get_equivalent(self.system, 'ward', 
                                             area_info.get('border_node'), 
                                             area_info.get('internal_node'))
@@ -220,15 +225,18 @@ class GetVariablesSystem(object):
                 'init_bus_v': init_bus_v,
                 'init_line_pij': init_line_pij,
                 'init_line_qij': init_line_qij,
+                'bound_line_pij': bound_line_pij,
+                'bound_line_pji': bound_line_pji,
                 'init_line_pji': init_line_pji,
                 'init_line_qji': init_line_qji,
                 'init_gen_p': init_gen_p,
                 'init_gen_q': init_gen_q,
+                'gen_bound_q': gen_bound_q,
                 'init_slack_p': init_slack_p,
                 'init_slack_q': init_slack_q,
                 'ward_borders_p': ward_borders_p,
                 'ward_borders_q': ward_borders_q
-                }
+            }
         return self.system_values
     def _get_conductance_susceptance(self):
         '''
@@ -344,46 +352,42 @@ class GetVariablesSystem(object):
         for t in range(1,25):
             for ij in self.system_param.get('ij'):
                 # para Pij
-                p_v1 = self.system_values.get('init_line_pij').get((ij,t))
-                p_v2 = (
+                p_v1 = (
                     (self.g[ij] * (self.system_values.get('init_bus_v')[ij.split('-')[0],t]**2) / 1**2)
                     - (self.system_values.get('init_bus_v')[ij.split('-')[0],t] * self.system_values.get('init_bus_v')[ij.split('-')[1],t] / 1)
                     * (self.g[ij] * np.cos(self.system_values.get('init_bus_theta')[ij.split('-')[0],t] - self.system_values.get('init_bus_theta')[ij.split('-')[1],t]) 
                     + self.b[ij] * np.sin(self.system_values.get('init_bus_theta')[ij.split('-')[0],t] - self.system_values.get('init_bus_theta')[ij.split('-')[1],t]))
                     )
-                signo_pij = -1 if (p_v1>0 and p_v2<0 or p_v1<0 and p_v2>0) else 1
-                adj_line_pij[(ij,t)] = abs(p_v2/p_v1)*signo_pij
+                p_v2 = self.system_values.get('init_line_pij').get((ij,t))
+                adj_line_pij[(ij,t)] = p_v1 - p_v2
                 # para Qij
-                q_v1 = self.system_values.get('init_line_qij').get((ij,t))
-                q_v2 = (
+                q_v1 = (
                     -self.system_values.get('init_bus_v')[ij.split('-')[0],t]**2 * (self.b[ij]) / 1**2
                     - self.system_values.get('init_bus_v')[ij.split('-')[0],t] * self.system_values.get('init_bus_v')[ij.split('-')[1],t] /1 
                     * (self.g[ij] * np.sin(self.system_values.get('init_bus_theta')[ij.split('-')[0],t] - self.system_values.get('init_bus_theta')[ij.split('-')[1],t])
                     - self.b[ij] * np.cos(self.system_values.get('init_bus_theta')[ij.split('-')[0],t] - self.system_values.get('init_bus_theta')[ij.split('-')[1],t]))
                     )
-                signo_qij = -1 if (q_v1>0 and q_v2<0 or q_v1<0 and q_v2>0) else 1
-                adj_line_qij[(ij,t)] = abs(q_v2/q_v1)*signo_qij
+                q_v2 = self.system_values.get('init_line_qij').get((ij,t))
+                adj_line_qij[(ij,t)] = q_v1 - q_v2
             for ji in self.system_param.get('ji'):
                 # para Pji
-                p_v1 = self.system_values.get('init_line_pji').get((ji,t))
-                p_v2 = (
+                p_v1 = (
                     (self.g[ji] * (self.system_values.get('init_bus_v')[ji.split('-')[0],t]**2) / 1**2)
                     - (self.system_values.get('init_bus_v')[ji[0],t] * self.system_values.get('init_bus_v')[ji.split('-')[1],t] / 1)
                     * (self.g[ji] * np.cos(self.system_values.get('init_bus_theta')[ji.split('-')[0],t] - self.system_values.get('init_bus_theta')[ji.split('-')[1],t]) 
                     + self.b[ji] * np.sin(self.system_values.get('init_bus_theta')[ji.split('-')[0],t] - self.system_values.get('init_bus_theta')[ji.split('-')[1],t]))
                     )
-                signo_pji = -1 if (p_v1>0 and p_v2<0 or p_v1<0 and p_v2>0) else 1
-                adj_line_pji[(ji,t)] = abs(p_v2/p_v1)*signo_pji
+                p_v2 = self.system_values.get('init_line_pji').get((ji,t))
+                adj_line_pji[(ji,t)] = p_v1 - p_v2
                 # para Qji
-                q_v1 = self.system_values.get('init_line_qji').get((ji,t))
-                q_v2 = (
+                q_v1 = (
                     -self.system_values.get('init_bus_v')[ji.split('-')[1],t]**2 * (self.b[ji])
                     - self.system_values.get('init_bus_v')[ji.split('-')[0],t] * self.system_values.get('init_bus_v')[ji.split('-')[1],t] / 1
                     * (self.g[ji] * np.sin(self.system_values.get('init_bus_theta')[ji.split('-')[1],t] - self.system_values.get('init_bus_theta')[ji.split('-')[0],t])
                     - self.b[ji] * np.cos(self.system_values.get('init_bus_theta')[ji.split('-')[1],t] - self.system_values.get('init_bus_theta')[ji.split('-')[0],t]))
                     )
-                signo_qji = -1 if (q_v1>0 and q_v2<0 or q_v1<0 and q_v2>0) else 1
-                adj_line_qji[(ji,t)] = abs(q_v2/q_v1)*signo_qji
+                q_v2 = self.system_values.get('init_line_qji').get((ji,t))
+                adj_line_qji[(ji,t)] = q_v1 - q_v2
         # para balance de potencia
         adj_p_balance, adj_q_balance = {}, {}
         for t in range(1,25):
@@ -411,7 +415,7 @@ class GetVariablesSystem(object):
                     + sum(self.system_values.get('init_line_pji')[ji,t] for ji in self.system_param.get('branchji_bus').get(bus, {}))
                     + self.system_values.get('init_bus_v')[bus,t]**2 
                 )
-                adj_q_balance[(bus,t)] = (q_b1-q_b2)
+                adj_q_balance[(bus,t)] = q_b1-q_b2
         return{
             'adj_line_pij': adj_line_pij,
             'adj_line_pji': adj_line_pji,
