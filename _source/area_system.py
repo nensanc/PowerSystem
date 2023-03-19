@@ -1,4 +1,5 @@
 import pandapower.networks as pp_net
+from pandapower.grid_equivalents import get_equivalent
 import pandapower as pp
 import numpy as np
 
@@ -11,7 +12,6 @@ class GetVariablesSystem(object):
             Está función instancia la clase system, para obtener los parámetros y variables del sistema\n
             input\n
                 system: nombre del sistema en pandapower ieee9, ieee39, ieee57 o ieee118
-                multi_area: bandera para realizar separación multiarea
                 print_sec: para imprimir secuencia de ejecuciones
             return\n
                 Objeto de tipo system
@@ -24,6 +24,13 @@ class GetVariablesSystem(object):
             self.system = pp_net.case9()
             self.bus_shunt = [6,8,4]
             self.pilot_nodes = [i for i in range(9)]
+            self.sep_areas = {  1:{
+                                    'name':'A1','border_node':[4, 8],'internal_node':[0]
+                                },
+                                2:{
+                                    'name':'A2','border_node':[4, 8],'internal_node':[5]
+                                }
+                            }
         elif self.system_name=='ieee39':
             self.system = pp_net.case39()
             self.bus_shunt = [14,2,22,25]
@@ -45,7 +52,7 @@ class GetVariablesSystem(object):
         self.scaling = {1:.63, 2:.62, 3:.6, 4:.58, 5:.59, 6:.65, 7:.72, 8:.85, 
                         9:.95, 10:.99, 11:1, 12:.99, 13:.93, 14:.92, 15:.9,16:.88, 
                         17:.9, 18:.9, 19:.96, 20:.98, 21:.96, 22:.9, 23:.8, 24:.7 }
-        self.multiplier = 1.2
+        self.multiplier = 0.75
         self.sn_mva = self.system.sn_mva
         self.system.bus.iloc[:, list(self.system.bus.columns).index('max_vm_pu')] = 1.1
         self.system.bus.iloc[:, list(self.system.bus.columns).index('min_vm_pu')] = 0.9
@@ -53,7 +60,26 @@ class GetVariablesSystem(object):
         self.id_load_q = list(self.system.load.columns).index('q_mvar')
         self.id_gen_p = list(self.system.gen.columns).index('p_mw')
         if self.print_sec: print(f'Se crea el objeto del sistema a trabajar * {system} *')
-    def _get_param_from_system(self):
+    def _get_ward_eq_from_system(self, area=None):
+        load_init_p = list(self.system.load.iloc[:,self.id_load_p])
+        load_init_q = list(self.system.load.iloc[:,self.id_load_q])
+        gen_init_p = list(self.system.gen.iloc[:,self.id_gen_p])
+        for t in range(1,25):
+            self.system.gen.iloc[:,self.id_gen_p] = list(np.array(gen_init_p)*self.scaling.get(t)*self.multiplier)
+            self.system.load.iloc[:,self.id_load_p] = list(np.array(load_init_p)*self.scaling.get(t)*self.multiplier)
+            self.system.load.iloc[:,self.id_load_q] = list(np.array(load_init_q)*self.scaling.get(t)*self.multiplier)
+            net_eq = get_equivalent(self.system, 'ward', 
+                                    self.sep_areas.get(area).get('border_node'), 
+                                    self.sep_areas.get(area).get('internal_node'),)
+            ward_borders_p, ward_borders_q = {},{}
+            for i in range(net_eq.ward.shape[0]):
+                row = net_eq.ward.iloc[i]
+                res_row = net_eq.res_ward.iloc[i]
+                if (int(row['bus']) in self.sep_areas.get(area).get('border_node')):
+                    ward_borders_p[(str(row['bus']), t)] = res_row['p_mw']
+                    ward_borders_q[(str(row['bus']), t)] = res_row['q_mvar']
+        return net_eq, ward_borders_p, ward_borders_q 
+    def _get_param_from_system(self, system_area):
         '''
             Está función entrega los parámetros del sistema necesarias en el modelo de optimización
             input
@@ -64,24 +90,24 @@ class GetVariablesSystem(object):
         if self.print_sec: print('Se obtienen la variables del sistema')
         slack_bound_p, slack_bound_q, bounds_bus = {}, {}, {}
         for t in range(1,25):
-            for i in range(self.system.ext_grid.shape[0]):
-                row = self.system.ext_grid.iloc[i]
+            for i in range(system_area.ext_grid.shape[0]):
+                row = system_area.ext_grid.iloc[i]
                 slack_bound_p[(str(i), t)] = (row['min_p_mw']/self.sn_mva, 
                                               row['max_p_mw']/self.sn_mva)
                 slack_bound_q[(str(i), t)] = (row['min_q_mvar']/self.sn_mva, 
                                               row['max_q_mvar']/self.sn_mva)
-            for bus in range(self.system.bus.shape[0]):
-                row = self.system.bus.iloc[bus]
+            for bus in range(system_area.bus.shape[0]):
+                row = system_area.bus.iloc[bus]
                 bounds_bus[(str(bus), t)] = (row['min_vm_pu'], row['max_vm_pu'])
         atBus = {}
-        for gen,bus in enumerate(list(self.system.gen['bus'])):
+        for gen,bus in enumerate(list(system_area.gen['bus'])):
             atBus[(str(gen),bus)] = True
         atBusSlack = {}
-        for gen,bus in enumerate(list(self.system.ext_grid['bus'])):
+        for gen,bus in enumerate(list(system_area.ext_grid['bus'])):
             atBusSlack[(str(gen),bus)] = True
         list_i,ij, ji, branchij_bus, branchji_bus = [],[],[],{},{}
-        for i, j in list(zip(list(self.system.line['from_bus']),
-                            list(self.system.line['to_bus']))):
+        for i, j in list(zip(list(system_area.line['from_bus']),
+                            list(system_area.line['to_bus']))):
             if not str(i) in list_i: 
                 list_i.append(str(i))
             ij.append(f'{i}-{j}') 
@@ -95,23 +121,22 @@ class GetVariablesSystem(object):
             else:
                 branchji_bus[str(j)] = [f'{j}-{i}']
         bus_trafo = {}
-        for bus in list(self.system.trafo['hv_bus']):
+        for bus in list(system_area.bus.index.values):
             bus_trafo[str(bus)] = True
         self.system_param = {
                 'ij':ij,
                 'ji':ji,
-                'a':self.areas,
                 'i': list_i,
                 'branchij_bus': branchij_bus,
                 'branchji_bus': branchji_bus,
-                'bus': [str(bus) for bus in list(self.system.bus.index.values)],
+                'bus': [str(bus) for bus in list(system_area.bus.index.values)],
                 'bus_trafo': bus_trafo,
                 'bounds_bus':bounds_bus,
                 'atBus': atBus,
                 'atBusSlack': atBusSlack,
-                'demandbid': [str(bus) for bus in list(self.system.load.index.values)],
-                'gen':[str(gen) for gen in list(self.system.gen.index.values)],
-                'slack':[str(gen) for gen in list(self.system.ext_grid.index.values)],
+                'demandbid': [str(bus) for bus in list(system_area.load.index.values)],
+                'gen':[str(gen) for gen in list(system_area.gen.index.values)],
+                'slack':[str(gen) for gen in list(system_area.ext_grid.index.values)],
                 'slack_bound_p': slack_bound_p,
                 'slack_bound_q': slack_bound_q,
                 'model_name': self.model_name,
@@ -143,9 +168,9 @@ class GetVariablesSystem(object):
         Pd, Qd = {}, {}
         load_init_p = list(self.system.load.iloc[:,self.id_load_p])
         load_init_q = list(self.system.load.iloc[:,self.id_load_q])
-        gen_init_q = list(self.system.gen.iloc[:,self.id_gen_p])
+        gen_init_p = list(self.system.gen.iloc[:,self.id_gen_p])
         for t in range(1,25):
-            self.system.gen.iloc[:,self.id_gen_p] = list(np.array(gen_init_q)*self.scaling.get(t)*self.multiplier)
+            self.system.gen.iloc[:,self.id_gen_p] = list(np.array(gen_init_p)*self.scaling.get(t)*self.multiplier)
             self.system.load.iloc[:,self.id_load_p] = list(np.array(load_init_p)*self.scaling.get(t)*self.multiplier)
             self.system.load.iloc[:,self.id_load_q] = list(np.array(load_init_q)*self.scaling.get(t)*self.multiplier)
             pp.runpp(self.system)
@@ -176,12 +201,8 @@ class GetVariablesSystem(object):
                 init_gen_p[(str(c_gen), t)] = p/self.sn_mva
                 init_gen_q[(str(c_gen), t)] = q/self.sn_mva
                 row = self.system.gen.iloc[c_gen]
-                if q>0:
-                    min_q = row['min_q_mvar'] if row['min_q_mvar']<q else q
-                    max_q = row['max_q_mvar'] if row['max_q_mvar']>q else q
-                else:
-                    min_q = row['min_q_mvar'] if row['min_q_mvar']<q else q
-                    max_q = row['max_q_mvar'] if row['max_q_mvar']>q else q
+                min_q = row['min_q_mvar'] if row['min_q_mvar']<q else q
+                max_q = row['max_q_mvar'] if row['max_q_mvar']>q else q
                 gen_bound_q[(str(c_gen), t)] = (min_q/self.sn_mva, 
                                             max_q/self.sn_mva)
                 c_gen+=1
@@ -209,7 +230,7 @@ class GetVariablesSystem(object):
                 'init_slack_q': init_slack_q,
             }
         return self.system_values
-    def _get_conductance_susceptance(self):
+    def _get_conductance_susceptance(self, system_area):
         '''
             Está función entrega el calculo de la conductance y la susceptance.
             input
@@ -222,13 +243,13 @@ class GetVariablesSystem(object):
         self.g, self.b = {}, {}
         def calculate_g_b(tipe, d, r, x):
                 return d*(r if tipe=='g' else -x)/(np.power(r,2) + np.power(x,2))
-        for c in range(self.system.line.shape[0]):
-            row = self.system.line.iloc[c]
+        for c in range(system_area.line.shape[0]):
+            row = system_area.line.iloc[c]
             value_g = calculate_g_b(
                     'g',
                      row['length_km'],
-                     row['r_ohm_per_km'] if row['r_ohm_per_km']!=0 else self.system.line['r_ohm_per_km'].mean(),
-                     row['x_ohm_per_km'] if row['x_ohm_per_km']!=0 else self.system.line['x_ohm_per_km'].mean()
+                     row['r_ohm_per_km'] if row['r_ohm_per_km']!=0 else system_area.line['r_ohm_per_km'].mean(),
+                     row['x_ohm_per_km'] if row['x_ohm_per_km']!=0 else system_area.line['x_ohm_per_km'].mean()
                     )
             i, j = row['from_bus'], row['to_bus']
             self.g[f'{i}-{j}'] = value_g
@@ -236,13 +257,13 @@ class GetVariablesSystem(object):
             value_b = calculate_g_b(
                     'b',
                      row['length_km'],
-                     row['r_ohm_per_km'] if row['r_ohm_per_km']!=0 else self.system.line['r_ohm_per_km'].mean(),
-                     row['x_ohm_per_km'] if row['x_ohm_per_km']!=0 else self.system.line['x_ohm_per_km'].mean()
+                     row['r_ohm_per_km'] if row['r_ohm_per_km']!=0 else system_area.line['r_ohm_per_km'].mean(),
+                     row['x_ohm_per_km'] if row['x_ohm_per_km']!=0 else system_area.line['x_ohm_per_km'].mean()
                     )
             self.b[f'{i}-{j}'] = value_b
             self.b[f'{j}-{i}'] = value_b
         return self.g, self.b
-    def _get_ratio_line(self):
+    def _get_ratio_line(self, system_area):
         '''
             Está función entrega los mva de la líneas 
             input
@@ -252,13 +273,13 @@ class GetVariablesSystem(object):
         '''
         if self.print_sec: print('Se crea la variable ratio líneas')
         self.ratio_line = {}
-        for c in range(self.system.line.shape[0]):
-            row = self.system.line.iloc[c]
+        for c in range(system_area.line.shape[0]):
+            row = system_area.line.iloc[c]
             i, j = row['from_bus'], row['to_bus']
             self.ratio_line[f'{i}-{j}']\
                 = np.sqrt(3)*row['max_i_ka']*self.voltage.get(int(row['from_bus']))/self.sn_mva
         return self.ratio_line
-    def _get_ratio_trafo(self):
+    def _get_ratio_trafo(self, system_area):
         '''
             Está función entrega los tap de los trafos
             input
@@ -268,13 +289,13 @@ class GetVariablesSystem(object):
         '''
         if self.print_sec: print('Se crea la variable ratio trafos')
         self.ratio = {}
-        for c in range(self.system.line.shape[0]):
-            row = self.system.line.iloc[c]
+        for c in range(system_area.line.shape[0]):
+            row = system_area.line.iloc[c]
             i, j = row['from_bus'], row['to_bus']
             self.ratio[f'{i}-{j}'] = 1
             self.ratio[f'{j}-{i}'] = 1
         return self.ratio
-    def _get_genstatus(self):
+    def _get_genstatus(self, system_area):
         '''
             Está función entrega el estado de generadores, si están operativas o no.
             input
@@ -284,9 +305,9 @@ class GetVariablesSystem(object):
                                 genstatus(gen)
         '''
         if self.print_sec: print('Se crea la variable de genstatus')
-        self.genstatus = dict(((gen, bus), True) for gen,bus in enumerate(list(self.system.gen['bus'])))
+        self.genstatus = dict(((gen, bus), True) for gen,bus in enumerate(list(system_area.gen['bus'])))
         return self.genstatus
-    def _get_demandbidmap(self):
+    def _get_demandbidmap(self, system_area):
         '''
             Está función entrega el id de la demanda y su nodo de conexión
             input
@@ -296,7 +317,7 @@ class GetVariablesSystem(object):
                                 demandbidmap(load_id, bus)
         ''' 
         if self.print_sec: print('Se crea la variable de demandbidmap')
-        self.demandbidmap = dict(((load_id, bus), True) for load_id,bus in enumerate(list(self.system.load['bus'])))
+        self.demandbidmap = dict(((load_id, bus), True) for load_id,bus in enumerate(list(system_area.load['bus'])))
         return self.demandbidmap
     def _get_adjust_values(self):
         '''

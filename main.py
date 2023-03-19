@@ -3,7 +3,10 @@ from _source.system import GetVariablesSystem
 print('\n***Inicia el script***\n')
 
 #** istanciamos la clase para obtener las variables del sistema
-system = GetVariablesSystem('ieee9', multi_area=True, print_sec=False)
+system = GetVariablesSystem(
+    ['ieee9', 'ieee39', 'ieee57', 'ieee118'][3], 
+    print_sec=False
+)
 
 #** ------------ Creamos las variables del sistema ---------------#
 system_param = system._get_param_from_system()
@@ -14,8 +17,6 @@ ratio_trafo = system._get_ratio_trafo()
 g, b = system._get_conductance_susceptance()
 demandbidmap = system._get_demandbidmap()   
 adjust_values = system._get_adjust_values()
-
-print(system_values.get('ward_borders_q'))
 
 #** instanciamos la clase para el modelo de optimización
 model = CreateModel(system_param, system_values, adjust_values, print_sec=True)
@@ -37,7 +38,7 @@ model._add_power_s_constraint(ratio_line)
 model._add_power_p_constraint(g, b)
 model._add_power_q_constraint(g, b)
 model._add_p_balanced_constraint(genstatus, demandbidmap)
-model._add_q_balanced_constraint(genstatus)
+model._add_q_balanced_constraint(genstatus, demandbidmap)
 
 #** ------------- Agregamos la función objetivo ------------------#
 model._add_function_obj()
