@@ -4,7 +4,7 @@ print('\n***Inicia el script***\n')
 
 #** istanciamos la clase para obtener las variables del sistema
 system = GetVariablesSystem(
-    ['ieee9', 'ieee39', 'ieee57', 'ieee118'][3], 
+    ['ieee9', 'ieee39', 'ieee57', 'ieee118'][0], 
     print_sec=False
 )
 

@@ -316,7 +316,7 @@ class GetVariablesSystem(object):
                     + self.system_values.get('init_line_qij')[ij, t]**2      
                 )
                 signo_sij = -1 if (s_v1>0 and s_v2<0 or s_v1<0 and s_v2>0) else 1
-                adj_slimit_sij[(ij,t)] = 1.2*abs(s_v2/s_v1)*signo_sij
+                adj_slimit_sij[(ij,t)] = abs(s_v2/s_v1)*signo_sij
         ## ajuste de los flujos de potencia      
         adj_line_pij, adj_line_pji = {},{}
         adj_line_qij, adj_line_qji = {},{}
@@ -344,7 +344,7 @@ class GetVariablesSystem(object):
                 # para Pji
                 p_v1 = (
                     (self.g[ji] * (self.system_values.get('init_bus_v')[ji.split('-')[0],t]**2) / 1**2)
-                    - (self.system_values.get('init_bus_v')[ji[0],t] * self.system_values.get('init_bus_v')[ji.split('-')[1],t] / 1)
+                    - (self.system_values.get('init_bus_v')[ji.split('-')[0],t] * self.system_values.get('init_bus_v')[ji.split('-')[1],t] / 1)
                     * (self.g[ji] * np.cos(self.system_values.get('init_bus_theta')[ji.split('-')[0],t] - self.system_values.get('init_bus_theta')[ji.split('-')[1],t]) 
                     + self.b[ji] * np.sin(self.system_values.get('init_bus_theta')[ji.split('-')[0],t] - self.system_values.get('init_bus_theta')[ji.split('-')[1],t]))
                     )

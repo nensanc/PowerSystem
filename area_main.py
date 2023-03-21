@@ -1,36 +1,28 @@
 from _source.area_system import GetVariablesSystem
 from _source.area_model import CreateModel
 print('\n***Inicia el script***\n')
-
-#** istanciamos la clase para obtener las variables del sistema
-system = GetVariablesSystem('ieee9', print_sec=False)
-
-dict_init_param = {}
-for area in system.sep_areas:
+areas = 3
+dict_models, dict_net_eq, dict_system = {}, {}, {}
+area = 2
+for area_ in range(1,areas+1):
+    print(f'\n\nCreando el modelo para el área: {area}\n')
+    #** istanciamos la clase para obtener las variables del sistema
+    system = GetVariablesSystem(
+        ['ieee9', 'ieee39', 'ieee57', 'ieee118'][0], 
+        print_sec=False
+    )
     # get the ward equivalent
-    net_eq, ward_borders_p, ward_borders_q = system._get_ward_eq_from_system(area=area)
-
+    net_eq = system._get_ward_eq_from_system(area)
     #** ------------ Creamos las variables del sistema ---------------#
-    dict_init_param[f'system_param_a{area}'] = system._get_param_from_system(net_eq)
-    dict_init_param[f'genstatus_a{area}'] = system._get_genstatus(net_eq)
-    dict_init_param[f'ratio_line_a{area}'] = system._get_ratio_line(net_eq)
-    dict_init_param[f'ratio_trafo_a{area}'] = system._get_ratio_trafo(net_eq)
+    system_param = system._get_param_from_system(net_eq)
+    genstatus = system._get_genstatus(net_eq)
+    ratio_line = system._get_ratio_line(net_eq)
+    ratio_trafo = system._get_ratio_trafo(net_eq)
     g, b = system._get_conductance_susceptance(net_eq)
-    dict_init_param[f'g_a{area}'] = g
-    dict_init_param[f'b_a{area}'] = b
-    dict_init_param[f'demandbidmap_a{area}'] = system._get_demandbidmap(net_eq)   
-
-for area in system.sep_areas:
-    system_values = system._get_values_from_system()
-    adjust_values = system._get_adjust_values()
+    demandbidmap = system._get_demandbidmap(net_eq)   
 
     #** instanciamos la clase para el modelo de optimización
-    model = CreateModel(
-            dict_init_param.get(f'system_param_a{area}'), 
-            system_values, 
-            adjust_values, 
-            print_sec=False
-    )
+    model = CreateModel(system_param, print_sec=True)
 
     #** -------------- Creamos las variables del modelo --------------#
     model.init_model()
@@ -43,30 +35,38 @@ for area in system.sep_areas:
     model._add_var_Shunt_bus()
     model._add_var_pd_elastic()
     model._add_var_slack_variable()
+    model._add_param_model()
+    model._add_ward_eq_variable()
 
     #** ---------- Agregamos las restricciones del modelo ------------#
-    model._add_power_s_constraint(dict_init_param.get(f'ratio_line_a{area}'))
-    model._add_power_p_constraint(
-        dict_init_param.get(f'g_a{area}'), 
-        dict_init_param.get(f'b_a{area}')
-        )
-    model._add_power_q_constraint(
-        dict_init_param.get(f'a_a{area}'), 
-        dict_init_param.get(f'b_a{area}')
-        )
-    model._add_p_balanced_constraint(
-        dict_init_param.get(f'genstatus_a{area}') , 
-        dict_init_param.get(f'demandbidmap_a{area}')
-        )
-    model._add_q_balanced_constraint(
-        dict_init_param.get(f'genstatus_a{area}')
-        )
+    model._add_power_s_constraint(ratio_line)
+    model._add_power_p_constraint(g,b)
+    model._add_power_q_constraint(g, b)
+    model._add_p_balanced_constraint(genstatus, demandbidmap)
+    model._add_q_balanced_constraint(genstatus, demandbidmap)
 
     #** ------------- Agregamos la función objetivo ------------------#
     model._add_function_obj()
 
+    #** ------------- Guardamos las variables de interes ------------------#
+    dict_models[area] = model
+    dict_system[area] = system
+    break
+
+for area_ in range(1,areas+1):
+    #**-- Cargamos el modelo y agregamos la inicialización y bounds --#
+    model = dict_models.get(area)
+    system_values = dict_system.get(area)._get_values_from_system(
+                        area
+                    )
+    model._set_variables_model(system_values)
+    model._set_adjust_values(
+        dict_system.get(area)._get_adjust_values()
+    )
+
     #** ------------------- Resolver el modelo -----------------------#
-    is_solve = model.solve_model()
+    is_solve = model.solve_model(area)
 
     #** ----------------- Exportando las variables -------------------#
-    if is_solve: model.save_model_variables()
+    if is_solve: model.save_model_variables(area, system_values)
+    break

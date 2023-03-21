@@ -39,7 +39,6 @@ class CreateModel(object):
         self.model.trafo = pyomo.Set(initialize=[bus for bus in self.system_param.get('bus_trafo')], doc='Bus trafo')
         self.model.ij = pyomo.Set(initialize=[ij for ij in self.system_param.get('ij')], doc='Terminal ij')
         self.model.ji = pyomo.Set(initialize=[ji for ji in self.system_param.get('ji')], doc='Terminal ji')
-        self.model.a = pyomo.Set(initialize=[a for a in self.system_param.get('a')], doc='áreas')
         self.model.gen = pyomo.Set(initialize=[gen for gen in self.system_param.get('gen')], doc='Gen')
         self.model.slack = pyomo.Set(initialize=[gen for gen in self.system_param.get('slack')], doc='Slack')
         self.model.demandbid = pyomo.Set(initialize=[id_ for id_ in self.system_param.get('demandbid')], doc='Demandbid')
@@ -275,7 +274,7 @@ class CreateModel(object):
             return (
                     (g[ij] * (model.V_Vbus[ij.split('-')[0],t]**2)
                     / (model.V_Rtrafo[ij.split('-')[0],t]**2 if self.system_param.get('bus_trafo').get(ij.split('-')[0]) else 1))
-                    - (model.V_Vbus[ij[0],t] * model.V_Vbus[ij.split('-')[1],t]
+                    - (model.V_Vbus[ij.split('-')[0],t] * model.V_Vbus[ij.split('-')[1],t]
                     / (model.V_Rtrafo[ij.split('-')[0],t] if self.system_param.get('bus_trafo').get(ij.split('-')[0]) else 1))
                     * (g[ij] * pyomo.cos(model.V_Theta[ij.split('-')[0],t] - model.V_Theta[ij.split('-')[1],t]) 
                     + b[ij] * pyomo.sin(model.V_Theta[ij.split('-')[0],t] - model.V_Theta[ij.split('-')[1],t]))
@@ -291,8 +290,8 @@ class CreateModel(object):
         def line_constraint_ji(model, ji, t):
             return (
                     g[ji] * model.V_Vbus[ji.split('-')[1],t]**2
-                    - (model.V_Vbus[ji.split('-')[0],t] 
-                    * (model.V_Rtrafo[ji.split('-')[1],t]**2 if self.system_param.get('bus_trafo').get(ji.split('-')[1]) else 1))
+                    - (model.V_Vbus[ji.split('-')[0],t] * model.V_Vbus[ji.split('-')[1],t]
+                    / (model.V_Rtrafo[ji.split('-')[1],t]**2 if self.system_param.get('bus_trafo').get(ji.split('-')[1]) else 1))
                     * (g[ji] * pyomo.cos(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t]) 
                     + b[ji] * pyomo.sin(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t]))
                     ==
@@ -354,7 +353,7 @@ class CreateModel(object):
                             - model.V_Vbus[ji.split('-')[0],t] * model.V_Vbus[ji.split('-')[1],t]
                             / (model.V_Rtrafo[ji.split('-')[1],t]**2 if self.system_param.get('bus_trafo').get(ji.split('-')[1]) else 1)
                             * (g[ji] * pyomo.sin(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t])
-                            - b[ji] * pyomo.cos(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji[0],t])))
+                            - b[ji] * pyomo.cos(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t])))
                         -
                             abs(model.V_LineQji[ji,t] + self.adjust_values.get('adj_line_qji').get((ji,t)))
                         <= self.error
@@ -366,7 +365,7 @@ class CreateModel(object):
                             - model.V_Vbus[ji.split('-')[0],t] * model.V_Vbus[ji.split('-')[1],t]
                             / (model.V_Rtrafo[ji.split('-')[1],t]**2 if self.system_param.get('bus_trafo').get(ji.split('-')[1]) else 1)
                             * (g[ji] * pyomo.sin(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t])
-                            - b[ji] * pyomo.cos(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji[0],t]))
+                            - b[ji] * pyomo.cos(model.V_Theta[ji.split('-')[1],t] - model.V_Theta[ji.split('-')[0],t]))
                         ==
                             model.V_LineQji[ji,t] + self.adjust_values.get('adj_line_qji').get((ji,t))
                     )
