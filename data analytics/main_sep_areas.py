@@ -1,11 +1,17 @@
 
+import os
 import pandapower as pp, pandapower.networks as pn
 from pandas import DataFrame
 import numpy as np
 import skbio
 from sklearn.cluster import KMeans
 
-path = r'/home/lucy/Documentos/PandaPower'
+# ruta de resultados (configurable con la variable de entorno POWERSYSTEM_RESULTS_DIR)
+path = os.environ.get(
+    'POWERSYSTEM_RESULTS_DIR',
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'Resultados')
+)
+os.makedirs(path, exist_ok=True)
 
 
 def save_csv(matrix, name):

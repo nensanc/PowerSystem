@@ -1,4 +1,5 @@
 
+import os
 import pandapower as pp, pandapower.networks as pn
 from pandas import DataFrame
 import numpy as np
@@ -9,8 +10,12 @@ from sklearn.cluster import KMeans
 from sklearn_extensions.fuzzy_kmeans import FuzzyKMeans
 from _source.connection import validate_clusters, create_matrix
 
-# ruta de resultados
-path = r'/home/lucy/Documentos/PandaPower/Resultados'
+# ruta de resultados (configurable con la variable de entorno POWERSYSTEM_RESULTS_DIR)
+path = os.environ.get(
+    'POWERSYSTEM_RESULTS_DIR',
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'Resultados')
+)
+os.makedirs(path, exist_ok=True)
 
 def save_csv(matrix, name, ind_col=None):
     '''

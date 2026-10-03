@@ -21,7 +21,7 @@ $title "AC Optimal Power Flow with unit commitment"
 *         PrimeMover,pm_WT. Default=0.
 *_______________________________________________________________________________
 
-* -- --case=D:\Documentos\Maestría\Tesis\Gams_Original\Testcases_gdx\case57_spring_wday.gdx --savesol=1
+* -- --case=Testcases_gdx/case57_spring_wday.gdx --savesol=1
 
 * System dependence
 $if %system.filesys% == UNIX $set sep '/'
