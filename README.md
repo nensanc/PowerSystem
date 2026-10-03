@@ -30,7 +30,7 @@ How a model is built:
 flowchart LR
     A[pandapower IEEE case<br/>9 / 39 / 57 / 118 bus] --> B[24 h load & generation scaling<br/>+ hourly power flow]
     B --> C[GetVariablesSystem<br/>sets, parameters, initial values]
-    A -. area_main.py .-> W[Ward equivalent<br/>per area]
+    A -.->|area_main.py| W[Ward equivalent<br/>per area]
     W --> C
     C --> D[CreateModel<br/>Pyomo variables, constraints, objective]
     D --> E[Bonmin B-OA]
