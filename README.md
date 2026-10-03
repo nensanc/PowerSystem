@@ -112,7 +112,7 @@ PowerSystem/
 ### Installation
 
 ```bash
-git clone https://github.com/nensanc/PowerSystem.git
+git clone https://github.com/martinmsanchezm/PowerSystem.git
 cd PowerSystem
 pip install -r requirements.txt
 chmod +x solver/bonmin solver/couenne solver/ipopt
@@ -181,7 +181,7 @@ The plots below come from the committed notebooks and were generated in earlier 
 
 ## Author
 
-**Martin Sanchez** ([@nensanc](https://github.com/nensanc))
+**Martin Sanchez** ([@martinmsanchezm](https://github.com/martinmsanchezm))
 
 ## License
 
